@@ -1,0 +1,8 @@
+# Rust
+/target/
+
+# IDE
+.idea/
+
+# Output files
+/output.png
