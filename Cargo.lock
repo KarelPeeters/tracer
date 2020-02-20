@@ -215,6 +215,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f56a2d0bc861f9165be4eb3442afd3c236d8a98afd426f65d92324ae1091a484"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "jpeg-decoder"
 version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -611,8 +620,12 @@ name = "tracer"
 version = "0.1.0"
 dependencies = [
  "image",
+ "itertools",
  "nalgebra",
  "palette",
+ "rand",
+ "rand_distr",
+ "rayon",
 ]
 
 [[package]]

@@ -1,6 +1,11 @@
+use std::time::Instant;
+
 use image::ImageBuffer;
 use nalgebra::{Rotation3, Unit, Vector3};
 use palette::{Alpha, LinSrgba, named, Shade, Srgb, Srgba};
+use rand::{Rng, thread_rng};
+use rand::distributions::Distribution;
+use rand_distr::UnitSphere;
 
 use crate::geometry::{Hit, Plane, Ray, Shape, Sphere};
 use crate::material::Material;
@@ -31,14 +36,14 @@ impl Scene {
             .min_by(|(_, ah), (_, bh)| ah.t.partial_cmp(&bh.t).unwrap())
     }
 
-    fn trace(&self, ray: &Ray, depth_left: usize) -> Option<Color> {
+    fn trace<R: Rng>(&self, ray: &Ray, rand: &mut R, depth_left: usize) -> Option<Color> {
         if depth_left == 0 { return None; }
 
         if let Some((object, hit)) = self.first_hit(ray) {
             match object.material {
                 Material::Fixed(color) => Some(color),
                 Material::Mirror => {
-                    let reflect_direction = Unit::new_normalize(ray.direction.as_ref() -
+                    let reflect_direction = Unit::new_unchecked(ray.direction.as_ref() -
                         &hit.normal.scale(2.0 * ray.direction.dot(&hit.normal)));
                     let mut reflect_ray = Ray {
                         start: hit.point,
@@ -47,9 +52,23 @@ impl Scene {
                     //move a bit ahead so we don't collide with the same object again
                     reflect_ray.start = reflect_ray.at(0.01);
 
-                    let color = self.trace(&reflect_ray, depth_left - 1);
+                    let color = self.trace(&reflect_ray, rand, depth_left - 1);
 
                     color.map(|c| c.darken(0.05))
+                }
+                Material::Diffuse(mask) => {
+                    //pick random direction away from surface
+                    let [x, y, z] = UnitSphere.sample(rand);
+                    let reflect_direction = Vec3::new(x, y, z);
+                    reflect_direction.scale(reflect_direction.dot(&hit.normal).signum());
+
+                    let mut reflect_ray = Ray {
+                        start: hit.point,
+                        direction: Unit::new_unchecked(reflect_direction),
+                    };
+                    reflect_ray.start = reflect_ray.at(0.01);
+
+                    self.trace(&reflect_ray, rand, depth_left - 1).map(|c| c * mask)
                 }
             }
         } else {
@@ -87,11 +106,11 @@ impl Camera {
 
 fn main() {
     let scene = Scene {
-        sky: Srgb::from_format(named::DEEPSKYBLUE).into_linear(),
+        sky: Srgb::from_format(named::LIGHTSKYBLUE).into_linear(),
         shapes: vec![
             Object {
                 shape: Shape::Sphere(Sphere { center: Point3::new(0.0, 0.0, 5.0), radius: 1.0 }),
-                material: Material::Mirror,
+                material: Material::Diffuse(Srgb::from_format(named::PINK).into_linear()),
             },
             Object {
                 shape: Shape::Sphere(Sphere { center: Point3::new(-3.0, 0.0, 5.0), radius: 1.0 }),
@@ -108,41 +127,55 @@ fn main() {
         ],
     };
 
+    let width = 1920;
+    let height = 1080;
+    let fov: f32 = 90.0;
+
     let camera = Camera {
         position: Point3::new(0.0, 0.1, 0.0),
         direction: Unit::new_normalize(Vec3::new(0.0, 0.0, 1.0)),
-        fov_vertical: 90.0f32.to_radians(),
-        fov_horizontal: 90.0f32.to_radians(),
+        fov_vertical: fov.to_radians() * height as f32 / width as f32,
+        fov_horizontal: fov.to_radians(),
     };
 
-    let width = 1000;
-    let height = 1000;
+    let sample_count_sqr = 10;
+    let sample_step = 1.0 / sample_count_sqr as f32;
 
-    let deltas: [(f32, f32); 5] = [(0.0, 0.0), (1.0, 1.0), (1.0, -1.0), (-1.0, -1.0), (-1.0, 1.0)];
+    let start = Instant::now();
+    let mut rand = thread_rng();
 
     let image: ImageBuffer<image::Rgba<u8>, _> = ImageBuffer::from_fn(width, height, |x, y| {
         let mut total = LinSrgba::new(0.0, 0.0, 0.0, 0.0);
 
-        for (dx, dy) in &deltas {
-            let ray = camera.ray(
-                width as f32, height as f32,
-                x as f32 + dx / 6.0, y as f32 + dy / 6.0,
-            );
+        for dxi in 0..sample_count_sqr {
+            let dx = sample_step / 2.0 + dxi as f32 * sample_step;
+            for dyi in 0..sample_count_sqr {
+                let dy = sample_step / 2.0 + dyi as f32 * sample_step;
 
-            let color: LinSrgba = scene.trace(&ray, 50)
-                .map(|c| {
-                    Alpha { color: c, alpha: 1.0 }
-                })
-                .unwrap_or(Alpha { color: scene.sky, alpha: 1.0 });
+                let ray = camera.ray(
+                    width as f32, height as f32,
+                    x as f32 + dx, y as f32 + dy,
+                );
 
-            total += color;
+                let color: LinSrgba = scene.trace(&ray, &mut rand, 50)
+                    .map(|c| {
+                        Alpha { color: c, alpha: 1.0 }
+                    })
+                    .unwrap_or(Alpha { color: scene.sky, alpha: 1.0 });
+
+                total += color;
+            }
         }
 
-        let average = total / deltas.len() as f32;
+        let average = total / (sample_count_sqr * sample_count_sqr) as f32;
         let data = Srgba::from_linear(average).into_format();
         image::Rgba([data.red, data.green, data.blue, data.alpha])
     });
-    image.save("output.png").unwrap();
+
+    image.save("output.png").expect("Failed to save image");
+
+    let end = Instant::now();
+    println!("Render took {}s", (end - start).as_secs_f32());
 
     println!("Hello, world!");
 }
