@@ -100,3 +100,9 @@ impl Shape {
         }
     }
 }
+
+pub fn reflect(vec: &Unit<Vec3>, normal: &Unit<Vec3>) -> Unit<Vec3> {
+    Unit::new_unchecked(
+        vec.as_ref() - &normal.scale(2.0 * vec.dot(normal))
+    )
+}

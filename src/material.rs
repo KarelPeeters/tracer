@@ -1,8 +1,10 @@
+use rand::distributions::Bernoulli;
+
 use crate::Color;
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub enum Material {
-    Fixed(Color),
-    Diffuse(Color),
-    Mirror,
+    Fixed { color: Color },
+    Mixed { color: Color, diff_prob: Bernoulli },
 }
