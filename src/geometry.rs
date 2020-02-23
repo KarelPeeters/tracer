@@ -9,6 +9,13 @@ pub struct Ray {
 }
 
 impl Ray {
+    pub fn new(start: &Point3, direction: &Unit<Vec3>) -> Ray {
+        Ray {
+            start: start.clone(),
+            direction: direction.clone(),
+        }
+    }
+
     pub fn at(&self, t: f32) -> Point3 {
         &self.start + self.direction.scale(t)
     }
