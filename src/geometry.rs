@@ -42,17 +42,21 @@ impl Intersect for Sphere {
         let rel = &ray.start - &self.center;
 
         //solve quadratic equation
-        let b = 2.0 * rel.dot(&ray.direction);
+        let b: f32 = 2.0 * rel.dot(&ray.direction);
         let c = rel.norm_squared() - self.radius * self.radius;
 
         let d = b * b - 4.0 * c;
-        if d < 0.0 { return None; }
+        if d < 0.0 {
+            return None;
+        }
 
         let t1 = (-b + d.sqrt()) / 2.0;
         let t2 = (-b - d.sqrt()) / 2.0;
 
         //find closest solution in front of the ray
-        if t1 < 0.0 && t2 < 0.0 { return None; }
+        if t1 < 0.0 && t2 < 0.0 {
+            return None;
+        }
         let t = t1.min(t2);
 
         //construct intersection
@@ -93,10 +97,44 @@ impl Intersect for Plane {
 }
 
 #[derive(Debug)]
+pub struct Triangle {
+    pub base: Point3,
+    pub da: Vec3,
+    pub db: Vec3,
+
+    pub normal: Unit<Vec3>,
+    // pub base_normal: Vec3,
+    // pub a_normal: Vec3,
+    // pub b_normal: Vec3,
+}
+
+impl Intersect for Triangle {
+    fn intersect(&self, ray: &Ray) -> Option<Hit> {
+        let plane = Plane {
+            point: self.base.clone(),
+            normal: self.normal.clone(),
+        };
+
+        plane.intersect(ray).and_then(|mut hit| {
+            let p = &hit.point - &self.base;
+            let ua = self.da.dot(&p) / self.da.norm_squared();
+            let ub = self.db.dot(&p) / self.db.norm_squared();
+
+            if (0.0 <= ua && ua <= 1.0) && (0.0 <= ub && ub <= 1.0) && (ua + ub <= 1.0) {
+                hit.normal = self.normal.clone();
+                Some(hit)
+            } else {
+                None
+            }
+        })
+    }
+}
+
+#[derive(Debug)]
 pub enum Shape {
     Sphere(Sphere),
     Plane(Plane),
-    //TODO add triangle
+    Triangle(Triangle),
 }
 
 impl Shape {
@@ -104,12 +142,11 @@ impl Shape {
         match self {
             Shape::Sphere(s) => s.intersect(ray),
             Shape::Plane(s) => s.intersect(ray),
+            Shape::Triangle(s) => s.intersect(ray),
         }
     }
 }
 
 pub fn reflect(vec: &Unit<Vec3>, normal: &Unit<Vec3>) -> Unit<Vec3> {
-    Unit::new_unchecked(
-        vec.as_ref() - &normal.scale(2.0 * vec.dot(normal))
-    )
+    Unit::new_unchecked(vec.as_ref() - &normal.scale(2.0 * vec.dot(normal)))
 }
