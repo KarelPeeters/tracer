@@ -1,9 +1,13 @@
-use nalgebra::{Rotation3, Unit, Vector3};
-use rand::distributions::Distribution;
-use rand::Rng;
+use image::{ImageBuffer, Rgba};
+use nalgebra::{Unit, Vector3};
+use palette::{Alpha, LinSrgba, Srgba};
+use rand::{Rng, thread_rng};
+use rand::distributions::{Distribution, Uniform};
 use rand_distr::UnitSphere;
+use rayon::iter::{ParallelBridge, ParallelIterator};
 
-use crate::geometry::{Hit, Ray, Shape, reflect};
+use crate::camera::Camera;
+use crate::geometry::{Hit, Ray, reflect, Shape};
 use crate::material::Material;
 
 pub type Vec3 = Vector3<f32>;
@@ -21,33 +25,6 @@ pub struct Object {
 pub struct Light {
     pub position: Point3,
     pub color: Color,
-}
-
-#[derive(Debug)]
-pub struct Camera {
-    pub position: Point3,
-    pub direction: Unit<Vec3>,
-    pub fov_vertical: f32,
-    pub fov_horizontal: f32,
-}
-
-impl Camera {
-    //TODO fix distortion on the top and bottom of the image and
-    //     this also doesn't work for near-vertical camera directions yet
-    pub fn ray(&self, width: f32, height: f32, xi: f32, yi: f32) -> Ray {
-        let pitch = self.fov_vertical * (yi / height - 0.5);
-        let yaw = self.fov_horizontal * (xi / width - 0.5);
-        let rot = Rotation3::from_euler_angles(
-            pitch,
-            yaw,
-            0.0,
-        );
-
-        Ray {
-            start: self.position.clone(),
-            direction: rot * &self.direction,
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -72,7 +49,7 @@ impl Scene {
         self.first_hit_ray(&ray)
     }
 
-    pub fn trace<R: Rng>(&self, ray: &Ray, rand: &mut R, depth_left: usize) -> Option<Color> {
+    pub fn trace_ray<R: Rng>(&self, ray: &Ray, rand: &mut R, depth_left: usize) -> Option<Color> {
         if depth_left == 0 { return None; }
 
         if let Some((object, hit)) = self.first_hit_ray(ray) {
@@ -105,7 +82,8 @@ impl Scene {
             ray.start = ray.at(SHADOW_BIAS);
 
             //TODO think about the bailout condition
-            total += self.trace(&ray, rand, depth_left - 1).unwrap_or(Color::new(0.0, 0.0, 0.0));
+            total += self.trace_ray(&ray, rand, depth_left - 1)
+                .unwrap_or(Color::new(0.0, 0.0, 0.0));
 
             total *= object.material.reflect_color;
             total += object.material.emission;
@@ -116,4 +94,52 @@ impl Scene {
         }
     }
 }
+
+pub fn trace_image<C: Camera + Sync>(
+    scene: &Scene,
+    camera: &C,
+    width: u32,
+    height: u32,
+    max_depth: usize,
+    sample_count: usize,
+) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+    let mut image: ImageBuffer<image::Rgba<u8>, _> = ImageBuffer::new(width, height);
+
+    image.enumerate_rows_mut().par_bridge().for_each(|(y, row)| {
+        println!("y={}", y);
+        let mut rand = thread_rng();
+
+        for (x, y, p) in row {
+            let mut total = LinSrgba::new(0.0, 0.0, 0.0, 0.0);
+            let mut found_count = 0;
+
+            for _ in 0..sample_count {
+                let dx = Uniform::from(-0.5..0.5).sample(&mut rand);
+                let dy = Uniform::from(-0.5..0.5).sample(&mut rand);
+
+                let ray = camera.ray(
+                    width as f32, height as f32,
+                    x as f32 + dx, y as f32 + dy,
+                );
+
+                let color: LinSrgba = scene.trace_ray(&ray, &mut rand, max_depth)
+                    .map(|c| {
+                        found_count += 1;
+                        Alpha { color: c, alpha: 1.0 }
+                    })
+                    .unwrap_or(Alpha { color: scene.sky, alpha: 1.0 });
+
+                total += color;
+            }
+
+            let average = total / found_count as f32;
+            // println!("Average: {:?}, count: {}", average, found_count);
+            let data = Srgba::from_linear(average).into_format();
+            *p = image::Rgba([data.red, data.green, data.blue, data.alpha]);
+        }
+    });
+
+    image
+}
+
 

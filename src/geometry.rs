@@ -1,4 +1,6 @@
-use nalgebra::Unit;
+#![allow(dead_code)]
+
+use nalgebra::{Matrix2x3, Matrix3x2, Unit};
 
 use crate::{Point3, Vec3};
 
@@ -21,13 +23,14 @@ impl Ray {
     }
 }
 
+#[derive(Debug)]
 pub struct Hit {
     pub t: f32,
     pub point: Point3,
     pub normal: Unit<Vec3>,
 }
 
-trait Intersect {
+pub trait Intersect {
     fn intersect(&self, ray: &Ray) -> Option<Hit>;
 }
 
@@ -98,30 +101,37 @@ impl Intersect for Plane {
 
 #[derive(Debug)]
 pub struct Triangle {
-    pub base: Point3,
-    pub da: Vec3,
-    pub db: Vec3,
+    plane: Plane,
+    project: Matrix2x3<f32>,
+}
 
-    pub normal: Unit<Vec3>,
-    // pub base_normal: Vec3,
-    // pub a_normal: Vec3,
-    // pub b_normal: Vec3,
+impl Triangle {
+    pub fn new(a: Point3, b: Point3, c: Point3) -> Triangle {
+        let db = &b - &a;
+        let dc = &c - &a;
+
+        let normal = Unit::new_normalize(db.cross(&dc));
+        let project = Matrix3x2::from_columns(&[db, dc]).pseudo_inverse(0.0)
+            .expect("Triangle not well formed");
+
+        Triangle {
+            plane: Plane { point: a, normal },
+            project,
+        }
+    }
 }
 
 impl Intersect for Triangle {
     fn intersect(&self, ray: &Ray) -> Option<Hit> {
-        let plane = Plane {
-            point: self.base.clone(),
-            normal: self.normal.clone(),
-        };
+        self.plane.intersect(ray).and_then(|mut hit| {
+            let p = &hit.point - &self.plane.point;
 
-        plane.intersect(ray).and_then(|mut hit| {
-            let p = &hit.point - &self.base;
-            let ua = self.da.dot(&p) / self.da.norm_squared();
-            let ub = self.db.dot(&p) / self.db.norm_squared();
+            let u = &self.project * &p;
+            let ub = u[0];
+            let uc = u[1];
 
-            if (0.0 <= ua && ua <= 1.0) && (0.0 <= ub && ub <= 1.0) && (ua + ub <= 1.0) {
-                hit.normal = self.normal.clone();
+            if ((0.0 <= ub) & (ub <= 1.0)) & ((0.0 <= uc) & (uc <= 1.0)) & (ub + uc <= 1.0) {
+                hit.normal = self.plane.normal.clone();
                 Some(hit)
             } else {
                 None

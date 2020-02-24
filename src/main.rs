@@ -1,100 +1,155 @@
+#![allow(dead_code)]
+
+use std::fs::read_to_string;
 use std::time::Instant;
 
-use image::ImageBuffer;
 use nalgebra::Unit;
-use palette::{Alpha, LinSrgba, named, Srgb, Srgba};
-use rand::thread_rng;
-use rand::distributions::{Distribution, Uniform};
-use rayon::iter::{ParallelBridge, ParallelIterator};
+use palette::{named, Srgb};
+use wavefront_obj::obj::{Primitive, Vertex};
+use wavefront_obj::obj;
 
-use crate::geometry::{Plane, Shape, Sphere};
-use crate::material::Material;
-use crate::tracer::{Camera, Light, Object, Point3, Scene, Vec3};
+use crate::camera::*;
+use crate::geometry::*;
+use crate::material::*;
+use crate::tracer::*;
 
 mod geometry;
 mod material;
+mod camera;
 mod tracer;
 
+fn colored_spheres() -> Vec<Object> {
+    vec![
+        Object {
+            shape: Shape::Sphere(Sphere {
+                center: Point3::new(0.0, 0.0, 5.0),
+                radius: 1.0,
+            }),
+            material: Material::basic(Srgb::from_format(named::PINK).into_linear(), 0.1),
+        },
+        Object {
+            shape: Shape::Sphere(Sphere {
+                center: Point3::new(-3.0, 0.0, 5.0),
+                radius: 1.0,
+            }),
+            material: Material::basic(Srgb::from_format(named::GREEN).into_linear(), 0.9),
+        },
+        Object {
+            shape: Shape::Sphere(Sphere {
+                center: Point3::new(3.0, 0.0, 5.0),
+                radius: 1.0,
+            }),
+            material: Material::basic(Srgb::from_format(named::RED).into_linear(), 0.9),
+        }
+    ]
+}
+
+fn plane() -> Vec<Object> {
+    vec![
+        Object {
+            shape: Shape::Plane(Plane {
+                point: Point3::new(0.0, 0.0, 0.0),
+                normal: Vec3::y_axis(),
+            }),
+            material: Material::basic(Srgb::from_format(named::GREY).into_linear(), 0.8),
+        }
+    ]
+}
+
+fn unit_sphere() -> Vec<Object> {
+    vec![
+        Object {
+            shape: Shape::Sphere(Sphere { center: Point3::new(0.0, 0.0, 0.0), radius: 1.0 }),
+            material: Material::basic(Srgb::from_format(named::YELLOW).into_linear(), 1.0),
+        }
+    ]
+}
+
+fn vertex_to_point(vertex: &Vertex) -> Point3 {
+    Point3::new(vertex.x as f32, vertex.y as f32, vertex.z as f32)
+}
+
+fn obj_to_objects(obj: &obj::Object) -> Vec<Object> {
+    let mut result = Vec::new();
+
+    for geometry in &obj.geometry {
+        for shape in &geometry.shapes {
+            match shape.primitive {
+                Primitive::Point(_) => {}
+                Primitive::Line(_, _) => {}
+                Primitive::Triangle((avi, _, ani), (bvi, _, bni), (cvi, _, cni)) => {
+                    let a = vertex_to_point(&obj.vertices[avi]);
+                    let b = vertex_to_point(&obj.vertices[bvi]);
+                    let c = vertex_to_point(&obj.vertices[cvi]);
+
+                    let triangle = Object {
+                        shape: Shape::Triangle(Triangle::new(a, b, c)),
+                        material: Material::basic(Srgb::from_format(named::WHITE).into_linear(), 1.0),
+                    };
+
+                    result.push(triangle)
+                }
+            }
+        }
+    }
+
+    result
+}
+
 fn main() {
-    let scene = Scene {
-        sky: Srgb::from_format(named::BLACK).into_linear(),
-        objects: vec![
-            Object {
-                shape: Shape::Sphere(Sphere { center: Point3::new(0.0, 0.0, 5.0), radius: 1.0 }),
-                material: Material::basic(Srgb::from_format(named::PINK).into_linear(), 0.9),
-            },
-            Object {
-                shape: Shape::Sphere(Sphere { center: Point3::new(-3.0, 0.0, 5.0), radius: 1.0 }),
-                material: Material::basic(Srgb::from_format(named::GREEN).into_linear(), 0.9),
-            },
-            Object {
-                shape: Shape::Sphere(Sphere { center: Point3::new(3.0, 0.0, 5.0), radius: 1.0 }),
-                material: Material::basic(Srgb::from_format(named::RED).into_linear(), 0.9),
-            },
-            Object {
-                shape: Shape::Plane(Plane { point: Point3::new(0.0, -1.0, 0.0), normal: Vec3::y_axis() }),
-                material: Material::basic(Srgb::from_format(named::WHITE).into_linear(), 1.0),
-            },
-        ],
+    let mut scene = Scene {
+        sky: Color::new(0.02, 0.02, 0.02),
+        objects: Vec::new(),
         lights: vec![
             Light {
                 position: Point3::new(100.0, 200.0, 40.0),
                 color: Srgb::from_format(named::WHITE).into_linear() * 15000f32,
-            },
+            }
         ],
     };
 
-    let width = 1920;
-    let height = 1080;
-    let fov: f32 = 90.0;
+    // scene.objects.extend(colored_spheres());
+    scene.objects.extend(plane());
+    // scene.objects.extend(unit_sphere());
 
-    let camera = Camera {
-        position: Point3::new(0.0, 0.5, 0.0),
-        direction: Unit::new_normalize(Vec3::new(0.0, 0.0, 1.0)),
-        fov_vertical: fov.to_radians() * height as f32 / width as f32,
-        fov_horizontal: fov.to_radians(),
-    };
+    let str = read_to_string("models/cube.obj").expect("Error while reading model");
+    let obj_set = wavefront_obj::obj::parse(&str).expect("Error while parsing model");
+    let obj = obj_set.objects.first().expect("No object found");
+
+    scene.objects.extend(obj_to_objects(obj));
+
+    let scene = scene;
+
+    println!("scene: {:?}", scene);
+
+    let width = 1920 / 8;
+    let height = 1080 / 8;
+
+    let fov = 90.0f32.to_radians();
 
     let max_depth = 7;
     let sample_count = 100;
 
+    let cam_look_at = Point3::new(0.0, 1.0, 0.0);
+    let cam_position = Point3::new(5.0, 5.0, -10.0);
+    let cam_direction = Unit::new_normalize(&cam_look_at - &cam_position);
+
+    /*let camera = OrthographicCamera {
+        position: cam_position,
+        direction: cam_direction,
+        width: 10.0,
+    };*/
+
+    let camera = PerspectiveCamera {
+        position: cam_position,
+        direction: cam_direction,
+        fov_vertical: fov * height as f32 / width as f32,
+        fov_horizontal: fov,
+    };
+
     let start = Instant::now();
 
-    let mut image: ImageBuffer<image::Rgba<u8>, _> = ImageBuffer::new(width, height);
-
-    image.enumerate_rows_mut().par_bridge().for_each(|(y, row)| {
-        println!("y={}", y);
-        let mut rand = thread_rng();
-
-        for (x, y, p) in row {
-            let mut total = LinSrgba::new(0.0, 0.0, 0.0, 0.0);
-            let mut found_count = 0;
-
-            for _ in 0..sample_count {
-                let dx = Uniform::from(-0.5..0.5).sample(&mut rand);
-                let dy = Uniform::from(-0.5..0.5).sample(&mut rand);
-
-                let ray = camera.ray(
-                    width as f32, height as f32,
-                    x as f32 + dx, y as f32 + dy,
-                );
-
-                let color: LinSrgba = scene.trace(&ray, &mut rand, max_depth)
-                    .map(|c| {
-                        found_count += 1;
-                        Alpha { color: c, alpha: 1.0 }
-                    })
-                    .unwrap_or(Alpha { color: scene.sky, alpha: 1.0 });
-
-                total += color;
-            }
-
-            let average = total / found_count as f32;
-            // println!("Average: {:?}, count: {}", average, found_count);
-            let data = Srgba::from_linear(average).into_format();
-            *p = image::Rgba([data.red, data.green, data.blue, data.alpha]);
-        }
-    });
+    let image = trace_image(&scene, &camera, width, height, max_depth, sample_count);
 
     image.save("ignored/output.png").expect("Failed to save image");
 
@@ -103,4 +158,3 @@ fn main() {
 
     println!("Hello, world!");
 }
-
