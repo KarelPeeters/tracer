@@ -4,7 +4,7 @@ use nalgebra::{Matrix2x3, Matrix3x2, Unit};
 
 use crate::{Point3, Vec3};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Ray {
     pub start: Point3,
     pub direction: Unit<Vec3>,
@@ -53,18 +53,13 @@ impl Intersect for Sphere {
             return None;
         }
 
-        let t1 = (-b + d.sqrt()) / 2.0;
-        let t2 = (-b - d.sqrt()) / 2.0;
+        let t_far = (-b + d.sqrt()) / 2.0;
+        let t_near = (-b - d.sqrt()) / 2.0;
 
-        //find closest solution in front of the ray
-        if t1 < 0.0 && t2 < 0.0 {
-            return None;
-        }
-        let t = t1.min(t2);
+        if t_far < 0.0 { return None; }
+        let t = if t_near >= 0.0 { t_near } else { t_far };
 
-        //construct intersection
         let point = ray.at(t);
-
         Some(Hit {
             t,
             point,
@@ -149,11 +144,15 @@ pub enum Shape {
 
 impl Shape {
     pub fn intersect(&self, ray: &Ray) -> Option<Hit> {
-        match self {
+        let hit = match self {
             Shape::Sphere(s) => s.intersect(ray),
             Shape::Plane(s) => s.intersect(ray),
             Shape::Triangle(s) => s.intersect(ray),
-        }
+        };
+
+        debug_assert!(hit.as_ref().map(|hit| hit.t >= 0.0).unwrap_or(true));
+
+        hit
     }
 }
 

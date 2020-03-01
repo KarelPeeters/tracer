@@ -39,7 +39,7 @@ const SHADOW_BIAS: f32 = 0.0001;
 impl Scene {
     fn first_hit_ray(&self, ray: &Ray) -> Option<(&Object, Hit)> {
         self.objects.iter()
-            .flat_map(|s| s.shape.intersect(&ray).map(|h| (s, h)))
+            .filter_map(|s| s.shape.intersect(&ray).map(|h| (s, h)))
             .min_by(|(_, ah), (_, bh)| ah.t.partial_cmp(&bh.t).expect("t == NaN"))
     }
 
@@ -73,6 +73,10 @@ impl Scene {
                 //diffuse
                 let data: [f32; 3] = UnitSphere.sample(rand);
                 Unit::new_unchecked(Vector3::new(data[0], data[1], data[2]))
+            } else if object.material.transparent_prob.sample(rand) {
+                //disable lights on reflective materials
+                total = Color::new(0.0, 0.0, 0.0);
+                ray.direction
             } else {
                 //mirror
                 reflect(&ray.direction, &hit.normal)
