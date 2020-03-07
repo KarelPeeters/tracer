@@ -110,6 +110,15 @@ fn main() {
         }*/
     ];
 
+    let specialization_constants = cs::SpecializationConstants {
+        MAX_BOUNCES: 2,
+    };
+    let push_constants = cs::ty::PushConstants {
+        CAMERA_POS: [0.0, 2.5, -4.5],
+        SKY_COLOR: [135.0/255.0, 206.0/255.0, 235.0/255.0],
+        _dummy0: Default::default(),
+    };
+
     let instance = Instance::new(None, &InstanceExtensions::none(), None)
         .expect("failed to create instance");
 
@@ -139,7 +148,7 @@ fn main() {
     let shader = cs::Shader::load(device.clone())
         .expect("failed to create shader");
 
-    let compute_pipeline = Arc::new(ComputePipeline::new(device.clone(), &shader.main_entry_point(), &())
+    let compute_pipeline = Arc::new(ComputePipeline::new(device.clone(), &shader.main_entry_point(), &specialization_constants)
         .expect("failed to create pipeline"));
 
     let material_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, materials.iter().cloned()).unwrap();
@@ -165,7 +174,7 @@ fn main() {
 
     let gpu_start = Instant::now();
     let command_buffer = AutoCommandBufferBuilder::new(device.clone(), queue_family).unwrap()
-        .dispatch([size / 8, size / 8, 1], compute_pipeline.clone(), set.clone(), ()).unwrap()
+        .dispatch([size / 8, size / 8, 1], compute_pipeline.clone(), set.clone(), push_constants).unwrap()
         .copy_image_to_buffer(image.clone(), result_buffer.clone()).unwrap()
         .build().unwrap();
 

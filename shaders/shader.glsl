@@ -1,9 +1,12 @@
 const float INF = 1.0/0.0;
 const float SHADOW_BIAS = 0.0001;
 
-const vec3 CAMERA_POS = vec3(0.0, 2.5, -4.5);
-const vec3 SKY_COLOR = vec3(135, 206, 235) / 255;
-const uint MAX_BOUNCES = 8;
+layout(constant_id = 0) const uint MAX_BOUNCES = 8;
+
+layout(push_constant) uniform PushConstants {
+    vec3 CAMERA_POS;
+    vec3 SKY_COLOR;
+};
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
