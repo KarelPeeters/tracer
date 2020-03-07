@@ -10,6 +10,12 @@ struct Plane {
     uint materialIndex;
 };
 
+struct Triangle {
+    Plane plane;
+    vec3 point;
+    mat3x2 project;
+};
+
 struct Ray {
     vec3 start;
     vec3 direction;
@@ -47,9 +53,9 @@ Hit raySphereIntersect(Ray ray, Sphere sphere) {
 }
 
 Hit rayPlaneIntersect(Ray ray, Plane plane) {
-    float num = plane.dist + dot(ray.start, plane.normal);
+    float num = plane.dist - dot(ray.start, plane.normal);
     float den = dot(ray.direction, plane.normal);
-    float t = -num / den;
+    float t = num / den;
 
     if (t < 0.0 || isinf(t)) {
         return Hit(INF, vec3(0.0), vec3(0.0), 0);
@@ -57,4 +63,16 @@ Hit rayPlaneIntersect(Ray ray, Plane plane) {
 
     vec3 point = ray.start + t * ray.direction;
     return Hit(t, point, plane.normal, plane.materialIndex);
+}
+
+Hit rayTriangleIntersect(Ray ray, Triangle triangle) {
+    Hit hit = rayPlaneIntersect(ray, triangle.plane);
+
+    if (!isinf(hit.t)) {
+        vec2 u = triangle.project * (hit.point - triangle.point);
+        if (u.x < 0.0 || u.x >= 1.0 || u.y < 0.0 || u.y >= 1.0 || u.x + u.y >= 1.0)
+            hit.t = INF;
+    }
+
+    return hit;
 }

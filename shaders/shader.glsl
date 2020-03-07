@@ -34,6 +34,10 @@ layout(set = 0, binding = 4) readonly buffer Planes {
     Plane planes[];
 };
 
+layout(set = 0, binding = 5) readonly buffer Triangles {
+    Triangle triangles[];
+};
+
 Hit castRay(Ray ray) {
     Hit bestHit = Hit(INF, vec3(0.0), vec3(0.0), 0);
 
@@ -45,6 +49,12 @@ Hit castRay(Ray ray) {
 
     for (uint i = 0; i < planes.length(); i++) {
         Hit hit = rayPlaneIntersect(ray, planes[i]);
+        if (hit.t > 0.0 && hit.t < bestHit.t)
+            bestHit = hit;
+    }
+
+    for (uint i = 0; i < triangles.length(); i++) {
+        Hit hit = rayTriangleIntersect(ray, triangles[i]);
         if (hit.t > 0.0 && hit.t < bestHit.t)
             bestHit = hit;
     }

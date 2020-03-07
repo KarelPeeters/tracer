@@ -45,7 +45,7 @@ fn main() {
             _dummy0: Default::default(),
         },
         cs::ty::Sphere {
-            center: [-0.3,0.0, 3.0],
+            center: [-0.3, 0.0, 3.0],
             radius: 0.2,
 
             materialIndex: 0,
@@ -60,7 +60,7 @@ fn main() {
             materialIndex: 1,
 
             _dummy0: Default::default(),
-        }
+        },
     ];
 
     let lights = vec![
@@ -80,6 +80,26 @@ fn main() {
         cs::ty::Material {
             color: [0.5, 0.5, 0.5],
             _dummy0: Default::default(),
+        },
+        cs::ty::Material {
+            color: [0.1, 0.1, 0.8],
+            _dummy0: Default::default(),
+        }
+    ];
+
+    let triangles = vec![
+        cs::ty::Triangle {
+            plane: cs::ty::Plane {
+                dist: 3.0,
+                normal: [0.0, 0.0, 1.0],
+                materialIndex: 2,
+
+                _dummy0: Default::default(),
+            },
+            point: [0.0, 0.0, 0.0],
+            project: [[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]],
+            _dummy0: Default::default(),
+            _dummy1: Default::default(),
         }
     ];
 
@@ -115,10 +135,12 @@ fn main() {
     let compute_pipeline = Arc::new(ComputePipeline::new(device.clone(), &shader.main_entry_point(), &())
         .expect("failed to create pipeline"));
 
+    let material_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, materials.iter().cloned()).unwrap();
+    let lights_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, lights.iter().cloned()).unwrap();
+
     let spheres_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, spheres.iter().cloned()).unwrap();
     let planes_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, planes.iter().cloned()).unwrap();
-    let lights_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, lights.iter().cloned()).unwrap();
-    let material_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, materials.iter().cloned()).unwrap();
+    let triangles_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, triangles.iter().cloned()).unwrap();
 
     let layout = compute_pipeline.layout().descriptor_set_layout(0).unwrap();
 
@@ -128,6 +150,7 @@ fn main() {
         .add_buffer(lights_buffer.clone()).unwrap()
         .add_buffer(spheres_buffer.clone()).unwrap()
         .add_buffer(planes_buffer.clone()).unwrap()
+        .add_buffer(triangles_buffer.clone()).unwrap()
         .build().unwrap());
 
     let result_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), true, (0..size * size * 4).map(|_| 0u8))
