@@ -38,15 +38,22 @@ fn first_factor(x: u32) -> u32 {
 fn main() {
     let spheres = vec![
         cs::ty::Sphere {
-            center: [0.5, 0.5, 3.0],
-            radius: 0.1,
+            center: [-3.0, 1.0, 5.0],
+            radius: 1.0,
+
+            materialIndex: 0,
+            _dummy0: Default::default(),
+        },
+        cs::ty::Sphere {
+            center: [0.0, 1.0, 5.0],
+            radius: 1.0,
             materialIndex: 0,
 
             _dummy0: Default::default(),
         },
         cs::ty::Sphere {
-            center: [-0.3, 0.0, 3.0],
-            radius: 0.2,
+            center: [3.0, 1.0, 5.0],
+            radius: 1.0,
 
             materialIndex: 0,
             _dummy0: Default::default(),
@@ -65,7 +72,7 @@ fn main() {
 
     let lights = vec![
         cs::ty::Light {
-            position: [10.0, 10.0, 10.0],
+            position: [10.0, 20.0, 20.0],
             _dummy0: Default::default(),
             color: [1.0, 1.0, 0.9],
             _dummy1: Default::default(),
@@ -74,21 +81,21 @@ fn main() {
 
     let materials = vec![
         cs::ty::Material {
-            color: [1.0, 1.0, 1.0],
-            _dummy0: Default::default(),
+            color: [0.9, 0.9, 0.9],
+            mirror: 0.9
         },
         cs::ty::Material {
             color: [0.5, 0.5, 0.5],
-            _dummy0: Default::default(),
+            mirror: 0.0
         },
         cs::ty::Material {
             color: [0.1, 0.1, 0.8],
-            _dummy0: Default::default(),
+            mirror: 0.0
         }
     ];
 
-    let triangles = vec![
-        cs::ty::Triangle {
+    let triangles: Vec<cs::ty::Triangle> = vec![
+        /*cs::ty::Triangle {
             plane: cs::ty::Plane {
                 dist: 3.0,
                 normal: [0.0, 0.0, 1.0],
@@ -100,7 +107,7 @@ fn main() {
             project: [[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]],
             _dummy0: Default::default(),
             _dummy1: Default::default(),
-        }
+        }*/
     ];
 
     let instance = Instance::new(None, &InstanceExtensions::none(), None)
