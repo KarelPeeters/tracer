@@ -6,11 +6,13 @@ layout(constant_id = 0) const uint MAX_BOUNCES = 8;
 layout(push_constant) uniform PushConstants {
     vec3 CAMERA_POS;
     vec3 SKY_COLOR;
+    uint SAMPLE_COUNT;
 };
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 #include "geometry.glsl"
+#include "rng.glsl"
 
 struct Material {
     vec3 color;
@@ -22,7 +24,7 @@ struct Light {
     vec3 color;
 };
 
-layout(set = 0, binding = 0, rgba8) uniform writeonly image2D result;
+layout(set = 0, binding = 0, rgba32ui) uniform uimage2D result;
 
 layout(set = 0, binding = 1) readonly buffer Materials {
     Material materials[];
@@ -123,11 +125,23 @@ vec3 trace(Ray ray) {
 }
 
 void main() {
+    uvec4 seedColor = imageLoad(result, ivec2(gl_GlobalInvocationID.xy));
+    uint seed = seedColor.x + (seedColor.y << 8) + (seedColor.z << 16) + (seedColor.a << 24);
+
     vec2 pixelPos = (gl_GlobalInvocationID.xy + vec2(0.5)) / vec2(imageSize(result));
-    vec2 centeredPos = vec2(pixelPos.x, 1.0-pixelPos.y) - vec2(0.5);
+    vec2 centeredPos = vec2(pixelPos.x, 1-pixelPos.y) - vec2(0.5);
 
-    Ray ray = Ray(CAMERA_POS, normalize(vec3(centeredPos, 1.0)));
-    vec4 color = vec4(trace(ray), 1.0);
+    vec3 total = vec3(0);
+    for (uint i = 0; i < SAMPLE_COUNT; i++) {
+        vec2 offset = vec2(nextFloat(seed), nextFloat(seed)) / 1000;
+        vec2 rayPos = centeredPos + offset;
+        Ray ray = Ray(CAMERA_POS, normalize(vec3(rayPos, 1)));
+        total += trace(ray);
+    }
+    total /= SAMPLE_COUNT;
 
-    imageStore(result, ivec2(gl_GlobalInvocationID.xy), color);
+    vec4 color = vec4(0, 0, 0, 1);
+    color.rgb = total;
+
+    imageStore(result, ivec2(gl_GlobalInvocationID.xy), uvec4(color*255));
 }

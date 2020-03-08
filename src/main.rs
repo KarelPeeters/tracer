@@ -15,6 +15,7 @@ use vulkano::image::{Dimensions, StorageImage};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
 use vulkano::sync::GpuFuture;
+use rand::{thread_rng, Rng};
 
 mod cs {
     vulkano_shaders::shader! {
@@ -81,7 +82,7 @@ fn main() {
 
     let materials = vec![
         cs::ty::Material {
-            color: [0.9, 0.9, 0.9],
+            color: [0.8, 0.8, 0.8],
             mirror: 0.9
         },
         cs::ty::Material {
@@ -111,11 +112,12 @@ fn main() {
     ];
 
     let specialization_constants = cs::SpecializationConstants {
-        MAX_BOUNCES: 2,
+        MAX_BOUNCES: 8,
     };
     let push_constants = cs::ty::PushConstants {
         CAMERA_POS: [0.0, 2.5, -4.5],
         SKY_COLOR: [135.0/255.0, 206.0/255.0, 235.0/255.0],
+        SAMPLE_COUNT: 100,
         _dummy0: Default::default(),
     };
 
@@ -134,7 +136,7 @@ fn main() {
         .expect("couldn't find compute family");
 
     let (device, mut queues) =
-        Device::new(physical, &Features::none(),
+        Device::new(physical, &Features { shader_f3264: true, ..Features::none() },
                     &DeviceExtensions { khr_storage_buffer_storage_class: true, ..DeviceExtensions::none() },
                     [(queue_family, 0.5)].iter().cloned()).expect("failed to create device");
 
@@ -142,7 +144,7 @@ fn main() {
 
     let size = 1024;
 
-    let image = StorageImage::new(device.clone(), Dimensions::Dim2d { width: size, height: size }, Format::R8G8B8A8Unorm, Some(queue_family))
+    let image = StorageImage::new(device.clone(), Dimensions::Dim2d { width: size, height: size }, Format::R8G8B8A8Uint, Some(queue_family))
         .expect("failed to create image");
 
     let shader = cs::Shader::load(device.clone())
@@ -169,11 +171,13 @@ fn main() {
         .add_buffer(triangles_buffer.clone()).unwrap()
         .build().unwrap());
 
-    let result_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), true, (0..size * size * 4).map(|_| 0u8))
+    let mut rng = thread_rng();
+    let result_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), true, (0..size * size * 4).map(|_| rng.gen()))
         .expect("failed to create buffer");
 
     let gpu_start = Instant::now();
     let command_buffer = AutoCommandBufferBuilder::new(device.clone(), queue_family).unwrap()
+        .copy_buffer_to_image(result_buffer.clone(), image.clone()).unwrap()
         .dispatch([size / 8, size / 8, 1], compute_pipeline.clone(), set.clone(), push_constants).unwrap()
         .copy_image_to_buffer(image.clone(), result_buffer.clone()).unwrap()
         .build().unwrap();
