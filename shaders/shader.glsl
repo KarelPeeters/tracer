@@ -101,31 +101,25 @@ struct Frame {
 };
 
 vec3 trace(Ray ray) {
-    Frame stack[MAX_BOUNCES];
-
-    uint i = 0;
     vec3 result = vec3(0.0);
+    vec3 mask = vec3(1.0);
 
-    //trace forward
-    for (i = 0; i < MAX_BOUNCES; i++) {
+    for (uint i = 0; i < MAX_BOUNCES; i++) {
         Hit hit = castRay(ray);
 
         if (isinf(hit.t)) {
-            result = SKY_COLOR;
+            result += mask * SKY_COLOR;
             break;
         } else {
-            stack[i].material = materials[hit.materialIndex];
-            stack[i].lights = lightsAt(hit.point, hit.normal);
+            Material material = materials[hit.materialIndex];
+            vec3 lights = lightsAt(hit.point, hit.normal);
+
+            result += mask * material.color * (1 - material.mirror) * lights;
+            mask *= material.mirror * material.color;
 
             ray = Ray(hit.point, reflect(ray.direction, hit.normal));
             ray.start += SHADOW_BIAS * hit.normal;
         }
-    }
-
-    //unwinding
-    while (i > 0) {
-        i--;
-        result = stack[i].material.color * mix(stack[i].lights, result, stack[i].material.mirror);
     }
 
     return result;
