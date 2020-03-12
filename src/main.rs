@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use image::{ImageBuffer, Rgba};
+use rand::{Rng, thread_rng};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBuffer};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
@@ -15,7 +16,6 @@ use vulkano::image::{Dimensions, StorageImage};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
 use vulkano::sync::GpuFuture;
-use rand::{thread_rng, Rng};
 
 mod cs {
     vulkano_shaders::shader! {
@@ -39,7 +39,7 @@ fn first_factor(x: u32) -> u32 {
 fn main() {
     let spheres = vec![
         cs::ty::Sphere {
-            center: [-3.0, 1.0, 5.0],
+            center: [-3.0, 1.0, 6.0],
             radius: 1.0,
 
             materialIndex: 0,
@@ -53,7 +53,7 @@ fn main() {
             _dummy0: Default::default(),
         },
         cs::ty::Sphere {
-            center: [3.0, 1.0, 5.0],
+            center: [3.0, 1.0, 4.0],
             radius: 1.0,
 
             materialIndex: 0,
@@ -83,15 +83,15 @@ fn main() {
     let materials = vec![
         cs::ty::Material {
             color: [0.8, 0.8, 0.8],
-            mirror: 0.9
+            mirror: 0.9,
         },
         cs::ty::Material {
             color: [0.5, 0.5, 0.5],
-            mirror: 0.0
+            mirror: 0.0,
         },
         cs::ty::Material {
             color: [0.1, 0.1, 0.8],
-            mirror: 0.0
+            mirror: 0.0,
         }
     ];
 
@@ -111,13 +111,24 @@ fn main() {
         }*/
     ];
 
+    let width = 1024;
+    let height = 512;
+
+    let aspect_ratio = (width as f32) / (height as f32);
+
     let specialization_constants = cs::SpecializationConstants {
         MAX_BOUNCES: 8,
     };
+
     let push_constants = cs::ty::PushConstants {
-        CAMERA_POS: [0.0, 2.5, -4.5],
-        SKY_COLOR: [135.0/255.0, 206.0/255.0, 235.0/255.0],
-        SAMPLE_COUNT: 100,
+        CAMERA: cs::ty::Camera {
+            position: [0.0, 1.5, -4.5],
+            focusDistance: 4.5 + 5.0,
+            aperture: 0.5,
+            aspectRatio: aspect_ratio,
+        },
+        SKY_COLOR: [135.0 / 255.0, 206.0 / 255.0, 235.0 / 255.0],
+        SAMPLE_COUNT: 1000,
         _dummy0: Default::default(),
     };
 
@@ -142,9 +153,7 @@ fn main() {
 
     let queue = queues.next().unwrap();
 
-    let size = 1024;
-
-    let image = StorageImage::new(device.clone(), Dimensions::Dim2d { width: size, height: size }, Format::R8G8B8A8Uint, Some(queue_family))
+    let image = StorageImage::new(device.clone(), Dimensions::Dim2d { width, height }, Format::R8G8B8A8Uint, Some(queue_family))
         .expect("failed to create image");
 
     let shader = cs::Shader::load(device.clone())
@@ -172,13 +181,13 @@ fn main() {
         .build().unwrap());
 
     let mut rng = thread_rng();
-    let result_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), true, (0..size * size * 4).map(|_| rng.gen()))
+    let result_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), true, (0..width * height * 4).map(|_| rng.gen()))
         .expect("failed to create buffer");
 
     let gpu_start = Instant::now();
     let command_buffer = AutoCommandBufferBuilder::new(device.clone(), queue_family).unwrap()
         .copy_buffer_to_image(result_buffer.clone(), image.clone()).unwrap()
-        .dispatch([size / 8, size / 8, 1], compute_pipeline.clone(), set.clone(), push_constants).unwrap()
+        .dispatch([width / 8, height / 8, 1], compute_pipeline.clone(), set.clone(), push_constants).unwrap()
         .copy_image_to_buffer(image.clone(), result_buffer.clone()).unwrap()
         .build().unwrap();
 
@@ -187,6 +196,6 @@ fn main() {
     println!("GPU Calculation took {}s", (Instant::now() - gpu_start).as_secs_f32());
 
     let buffer_content = result_buffer.read().unwrap();
-    let image = ImageBuffer::<Rgba<u8>, _>::from_raw(size, size, &*buffer_content).unwrap();
+    let image = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, &*buffer_content).unwrap();
     image.save("ignored/output.png").unwrap();
 }

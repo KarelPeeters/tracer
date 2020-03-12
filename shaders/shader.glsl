@@ -3,8 +3,15 @@ const float SHADOW_BIAS = 0.0001;
 
 layout(constant_id = 0) const uint MAX_BOUNCES = 8;
 
+struct Camera {
+    vec3 position;
+    float focusDistance;
+    float aperture;
+    float aspectRatio;
+};
+
 layout(push_constant) uniform PushConstants {
-    vec3 CAMERA_POS;
+    Camera CAMERA;
     vec3 SKY_COLOR;
     uint SAMPLE_COUNT;
 };
@@ -129,14 +136,21 @@ void main() {
     uint seed = seedColor.x + (seedColor.y << 8) + (seedColor.z << 16) + (seedColor.a << 24);
 
     vec2 pixelPos = (gl_GlobalInvocationID.xy + vec2(0.5)) / vec2(imageSize(result));
-    vec2 centeredPos = vec2(pixelPos.x, 1-pixelPos.y) - vec2(0.5);
+    vec2 centeredPos = (vec2(pixelPos.x, 1-pixelPos.y) - vec2(0.5)) / vec2(1, CAMERA.aspectRatio);
 
     vec3 total = vec3(0);
     for (uint i = 0; i < SAMPLE_COUNT; i++) {
-        vec2 offset = vec2(nextFloat(seed), nextFloat(seed)) / 1000;
+        //TODO properly use the size of a pixel here
+        vec2 offset = vec2(randomFloat(seed)-0.5, randomFloat(seed)-0.5) / 1000;
         vec2 rayPos = centeredPos + offset;
-        Ray ray = Ray(CAMERA_POS, normalize(vec3(rayPos, 1)));
-        total += trace(ray);
+        Ray primaryRay = Ray(CAMERA.position, normalize(vec3(rayPos, 1)));
+
+        vec3 focalPoint = primaryRay.start + CAMERA.focusDistance * primaryRay.direction;
+        vec3 jitterStart = primaryRay.start + CAMERA.aperture * vec3(randomUnitDisk(seed), 0.0);
+
+        Ray secondaryRay = Ray(jitterStart, normalize(focalPoint - jitterStart));
+
+        total += trace(secondaryRay);
     }
     total /= SAMPLE_COUNT;
 
