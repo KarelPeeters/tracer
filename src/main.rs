@@ -73,26 +73,32 @@ fn main() {
 
     let lights = vec![
         cs::ty::Light {
-            position: [10.0, 20.0, 20.0],
+            position: [10.0, 20.0, -20.0],
             _dummy0: Default::default(),
-            color: [1.0, 1.0, 0.9],
+            color: [3.0, 3.0, 3.0],
             _dummy1: Default::default(),
         },
     ];
 
     let materials = vec![
         cs::ty::Material {
-            color: [0.8, 0.8, 0.8],
-            mirror: 0.9,
+            color: [0.2, 0.2, 1.0],
+
+            mirrorFactor: 0.9,
+            lightFactor: 0.2,
+            diffuseFactor: 1.0,
+
+            _dummy0: Default::default(),
         },
         cs::ty::Material {
             color: [0.5, 0.5, 0.5],
-            mirror: 0.0,
+
+            mirrorFactor: 0.0,
+            lightFactor: 0.5,
+            diffuseFactor: 1.0,
+
+            _dummy0: Default::default(),
         },
-        cs::ty::Material {
-            color: [0.1, 0.1, 0.8],
-            mirror: 0.0,
-        }
     ];
 
     let triangles: Vec<cs::ty::Triangle> = vec![

@@ -23,7 +23,10 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 struct Material {
     vec3 color;
-    float mirror;
+
+    float lightFactor;
+    float mirrorFactor;
+    float diffuseFactor;
 };
 
 struct Light {
@@ -100,7 +103,7 @@ struct Frame {
     Material material;
 };
 
-vec3 trace(Ray ray) {
+vec3 trace(Ray ray, inout uint seed) {
     vec3 result = vec3(0.0);
     vec3 mask = vec3(1.0);
 
@@ -114,10 +117,22 @@ vec3 trace(Ray ray) {
             Material material = materials[hit.materialIndex];
             vec3 lights = lightsAt(hit.point, hit.normal);
 
-            result += mask * material.color * (1 - material.mirror) * lights;
-            mask *= material.mirror * material.color;
+            mask *= material.color;
+            result += mask * material.lightFactor * lights;
 
-            ray = Ray(hit.point, reflect(ray.direction, hit.normal));
+            vec3 nextDir;
+
+            if (randomBool(seed) || true) {
+                //diffuse
+                mask *= material.diffuseFactor;
+                nextDir = randomCosineUnitHemi(seed, hit.normal);
+            } else {
+                //mirror
+                mask *= material.mirrorFactor;
+                nextDir = reflect(ray.direction, hit.normal);
+            }
+
+            ray = Ray(hit.point, nextDir);
             ray.start += SHADOW_BIAS * hit.normal;
         }
     }
@@ -144,7 +159,7 @@ void main() {
 
         Ray secondaryRay = Ray(jitterStart, normalize(focalPoint - jitterStart));
 
-        total += trace(secondaryRay);
+        total += trace(secondaryRay, seed);
     }
     total /= SAMPLE_COUNT;
 
