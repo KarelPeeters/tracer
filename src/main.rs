@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 
+use std::fs::read_to_string;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -16,6 +17,9 @@ use vulkano::image::{Dimensions, StorageImage};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
 use vulkano::sync::GpuFuture;
+use wavefront_obj::obj;
+use wavefront_obj::obj::{Primitive, Vertex};
+use nalgebra::{Unit, Matrix3x2};
 
 mod cs {
     vulkano_shaders::shader! {
@@ -24,13 +28,53 @@ mod cs {
     }
 }
 
-fn first_factor(x: u32) -> u32 {
-    let mut result = 0;
-    let mut i = 2;
+type Vec3 = nalgebra::Vector3<f32>;
+type Point3 = nalgebra::Point3<f32>;
 
-    while i * i < 3162 {
-        if x % i == 0 { result = i }
-        i += 1;
+
+fn vertex_to_point(vertex: &Vertex) -> Point3 {
+    Point3::new(vertex.x as f32, vertex.y as f32, vertex.z as f32)
+}
+
+fn obj_to_triangles(obj: &obj::Object) -> Vec<cs::ty::Triangle> {
+    let mut result = Vec::new();
+
+    for geometry in &obj.geometry {
+        for shape in &geometry.shapes {
+            match shape.primitive {
+                Primitive::Point(_) => {}
+                Primitive::Line(_, _) => {}
+                Primitive::Triangle((avi, ..), (bvi, ..), (cvi, ..)) => {
+                    let a = vertex_to_point(&obj.vertices[avi]);
+                    let b = vertex_to_point(&obj.vertices[bvi]);
+                    let c = vertex_to_point(&obj.vertices[cvi]);
+
+                    let db = &b - &a;
+                    let dc = &c - &a;
+
+                    let normal = Unit::new_normalize(db.cross(&dc));
+
+                    let project = Matrix3x2::from_columns(&[db, dc]).pseudo_inverse(0.0).expect("Degenerate triangle");
+
+                    result.push(cs::ty::Triangle {
+                        project: [
+                            [*project.index((0,0)), *project.index((1,0))],
+                            [*project.index((0,1)), *project.index((1,1))],
+                            [*project.index((0,2)), *project.index((1,2))]
+                        ],
+                        point: [a.x as f32, a.y as f32, a.z as f32],
+                        plane: cs::ty::Plane {
+                            dist: normal.dot(&a.coords),
+                            normal: [normal.x, normal.y, normal.z],
+                            materialIndex: 1,
+                            _dummy0: Default::default(),
+                        },
+                        _dummy0: Default::default(),
+                        _dummy1: Default::default(),
+                    })
+                }
+            }
+        }
     }
 
     result
@@ -101,7 +145,7 @@ fn main() {
         },
     ];
 
-    let triangles: Vec<cs::ty::Triangle> = vec![
+    let mut triangles: Vec<cs::ty::Triangle> = vec![
         /*cs::ty::Triangle {
             plane: cs::ty::Plane {
                 dist: 3.0,
@@ -117,6 +161,11 @@ fn main() {
         }*/
     ];
 
+    let obj_str = read_to_string("ignored/models/monkey_hole.obj").expect("Error while reading model");
+    let obj_set = obj::parse(obj_str).expect("Error while parsing model");
+    let obj_triangles = obj_to_triangles(obj_set.objects.first().expect("No object found"));
+    triangles.extend(obj_triangles);
+
     let width = 1024;
     let height = 512;
 
@@ -128,13 +177,13 @@ fn main() {
 
     let push_constants = cs::ty::PushConstants {
         CAMERA: cs::ty::Camera {
-            position: [0.0, 1.5, -4.5],
-            focusDistance: 4.5 + 5.0,
-            aperture: 0.5,
+            position: [0.0, 1.0, -8.0],
+            focusDistance: 8.0 + 5.0 - 5.0,
+            aperture: 0.0,
             aspectRatio: aspect_ratio,
         },
-        SKY_COLOR: [135.0 / 255.0, 206.0 / 255.0, 235.0 / 255.0],
-        SAMPLE_COUNT: 1000,
+        SKY_COLOR: [0.0, 0.0, 0.0],
+        SAMPLE_COUNT: 1,
         _dummy0: Default::default(),
     };
 
