@@ -5,6 +5,7 @@ layout(constant_id = 0) const uint MAX_BOUNCES = 8;
 
 struct Camera {
     vec3 position;
+    vec3 direction;
     float focusDistance;
     float aperture;
     float aspectRatio;
@@ -21,12 +22,15 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 #include "geometry.glsl"
 #include "rng.glsl"
 
+// 0.0            .. keyDiffuse: diffuse
+// keyDiffuse     .. keyTransparent: mirror
+// keyTransparent .. 1.0: transparent
 struct Material {
     vec3 color;
+    float refractRatio;//when going against normal
 
-    float lightFactor;
-    float mirrorFactor;
-    float diffuseFactor;
+    float keyDiffuse;
+    float keyTransparent;
 };
 
 struct Light {
@@ -91,7 +95,7 @@ vec3 lightsAt(vec3 point, vec3 normal) {
         Ray shadowRay = Ray(point + SHADOW_BIAS * normal, normalize(light.position - point));
         Hit shadowHit = castRay(shadowRay);
         if (shadowHit.t > distance(point, light.position)) {
-            result += light.color;
+            result += light.color * abs(dot(normal, shadowRay.direction));
         }
     }
 
@@ -115,25 +119,46 @@ vec3 trace(Ray ray, inout uint seed) {
             break;
         } else {
             Material material = materials[hit.materialIndex];
-            vec3 lights = lightsAt(hit.point, hit.normal);
-
             mask *= material.color;
-            result += mask * material.lightFactor * lights;
 
             vec3 nextDir;
+            vec3 nextStart;
 
-            if (randomBool(seed) || true) {
-                //diffuse
-                mask *= material.diffuseFactor;
-                nextDir = randomCosineUnitHemi(seed, hit.normal);
+            float key = randomFloat(seed);
+
+            if (key > material.keyTransparent) {
+                //transparent
+                float r = material.refractRatio;
+                float c = - dot(hit.normal, ray.direction);
+                vec3 normal = hit.normal;
+
+                if (c < 0.0) {
+                    r = 1/r;
+                    c = -c;
+                    normal = -normal;
+                }
+
+                nextDir = r * ray.direction + (r * c - sqrt(1-r*r*(1-c*c))) * normal;
+                nextStart = hit.point + SHADOW_BIAS * nextDir;
             } else {
-                //mirror
-                mask *= material.mirrorFactor;
-                nextDir = reflect(ray.direction, hit.normal);
+                //non transparent
+
+                //diffuse lights
+                vec3 lights = lightsAt(hit.point, hit.normal);
+                result += mask * material.keyDiffuse * lights;
+
+                if (key < material.keyDiffuse) {
+                    //diffuse
+                    nextDir = randomCosineUnitHemi(seed, hit.normal);
+                } else {
+                    //mirror
+                    nextDir = reflect(ray.direction, hit.normal);
+                }
+
+                nextStart = hit.point + SHADOW_BIAS * hit.normal;
             }
 
-            ray = Ray(hit.point, nextDir);
-            ray.start += SHADOW_BIAS * hit.normal;
+            ray = Ray(nextStart, nextDir);
         }
     }
 
@@ -152,7 +177,7 @@ void main() {
         //TODO properly use the size of a pixel here
         vec2 offset = vec2(randomFloat(seed)-0.5, randomFloat(seed)-0.5) / 1000;
         vec2 rayPos = centeredPos + offset;
-        Ray primaryRay = Ray(CAMERA.position, normalize(vec3(rayPos, 1)));
+        Ray primaryRay = Ray(CAMERA.position, normalize(vec3(rayPos, 0.0) + CAMERA.direction));
 
         vec3 focalPoint = primaryRay.start + CAMERA.focusDistance * primaryRay.direction;
         vec3 jitterStart = primaryRay.start + CAMERA.aperture * vec3(randomUnitDisk(seed), 0.0);

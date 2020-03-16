@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
-
 use std::fs::read_to_string;
 use std::sync::Arc;
 use std::time::Instant;
 
 use image::{ImageBuffer, Rgba};
+use nalgebra::{Matrix3x2, Unit};
 use rand::{Rng, thread_rng};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBuffer};
@@ -19,7 +19,6 @@ use vulkano::pipeline::ComputePipeline;
 use vulkano::sync::GpuFuture;
 use wavefront_obj::obj;
 use wavefront_obj::obj::{Primitive, Vertex};
-use nalgebra::{Unit, Matrix3x2};
 
 mod cs {
     vulkano_shaders::shader! {
@@ -58,15 +57,15 @@ fn obj_to_triangles(obj: &obj::Object) -> Vec<cs::ty::Triangle> {
 
                     result.push(cs::ty::Triangle {
                         project: [
-                            [*project.index((0,0)), *project.index((1,0))],
-                            [*project.index((0,1)), *project.index((1,1))],
-                            [*project.index((0,2)), *project.index((1,2))]
+                            [*project.index((0, 0)), *project.index((1, 0))],
+                            [*project.index((0, 1)), *project.index((1, 1))],
+                            [*project.index((0, 2)), *project.index((1, 2))]
                         ],
                         point: [a.x as f32, a.y as f32, a.z as f32],
                         plane: cs::ty::Plane {
                             dist: normal.dot(&a.coords),
                             normal: [normal.x, normal.y, normal.z],
-                            materialIndex: 1,
+                            materialIndex: 0,
                             _dummy0: Default::default(),
                         },
                         _dummy0: Default::default(),
@@ -80,8 +79,37 @@ fn obj_to_triangles(obj: &obj::Object) -> Vec<cs::ty::Triangle> {
     result
 }
 
+struct Material {
+    color: [f32; 3],
+    refract_ratio: f32,
+
+    mirror: f32,
+    diffuse: f32,
+    transparent: f32,
+}
+
+impl Material {
+    fn as_cs_ty(&self) -> cs::ty::Material {
+        let total = self.mirror + self.diffuse + self.transparent;
+
+        let r = cs::ty::Material {
+            color: self.color,
+            refractRatio: self.refract_ratio,
+            keyDiffuse: self.diffuse / total,
+            keyTransparent: 1.0 - self.transparent / total,
+
+            _dummy0: Default::default(),
+        };
+
+        println!("{}", r.keyDiffuse);
+        println!("{}", r.keyTransparent);
+
+        r
+    }
+}
+
 fn main() {
-    let spheres = vec![
+    let spheres: Vec<cs::ty::Sphere> = vec![
         cs::ty::Sphere {
             center: [-3.0, 1.0, 6.0],
             radius: 1.0,
@@ -115,34 +143,34 @@ fn main() {
         },
     ];
 
-    let lights = vec![
+    let lights: Vec<cs::ty::Light> = vec![
         cs::ty::Light {
             position: [10.0, 20.0, -20.0],
             _dummy0: Default::default(),
-            color: [3.0, 3.0, 3.0],
+            color: [0.5, 0.5, 0.5],
             _dummy1: Default::default(),
         },
     ];
 
     let materials = vec![
-        cs::ty::Material {
-            color: [0.2, 0.2, 1.0],
+        //object material
+        Material {
+            color: [0.95, 0.95, 0.95],
+            refract_ratio: 0.9,
 
-            mirrorFactor: 0.9,
-            lightFactor: 0.2,
-            diffuseFactor: 1.0,
+            mirror: 1.0,
+            diffuse: 1.0,
+            transparent: 6.0,
+        }.as_cs_ty(),
+        //floor material
+        Material {
+            color: [0.9, 0.9, 0.9],
+            refract_ratio: 1.0,
 
-            _dummy0: Default::default(),
-        },
-        cs::ty::Material {
-            color: [0.5, 0.5, 0.5],
-
-            mirrorFactor: 0.0,
-            lightFactor: 0.5,
-            diffuseFactor: 1.0,
-
-            _dummy0: Default::default(),
-        },
+            mirror: 0.0,
+            diffuse: 1.0,
+            transparent: 0.0,
+        }.as_cs_ty(),
     ];
 
     let mut triangles: Vec<cs::ty::Triangle> = vec![
@@ -161,10 +189,10 @@ fn main() {
         }*/
     ];
 
-    let obj_str = read_to_string("ignored/models/monkey_hole.obj").expect("Error while reading model");
+    /*let obj_str = read_to_string("ignored/models/cube.obj").expect("Error while reading model");
     let obj_set = obj::parse(obj_str).expect("Error while parsing model");
     let obj_triangles = obj_to_triangles(obj_set.objects.first().expect("No object found"));
-    triangles.extend(obj_triangles);
+    triangles.extend(obj_triangles);*/
 
     let width = 1024;
     let height = 512;
@@ -177,13 +205,16 @@ fn main() {
 
     let push_constants = cs::ty::PushConstants {
         CAMERA: cs::ty::Camera {
-            position: [0.0, 1.0, -8.0],
+            position: [0.0, 1.5, -8.0],
+            direction: [0.0, 0.0, 1.0],
             focusDistance: 8.0 + 5.0 - 5.0,
             aperture: 0.0,
             aspectRatio: aspect_ratio,
+
+            _dummy0: Default::default(),
         },
-        SKY_COLOR: [0.0, 0.0, 0.0],
-        SAMPLE_COUNT: 1,
+        SKY_COLOR: [0.529 / 2.0, 0.808 / 2.0, 0.922 / 2.0],
+        SAMPLE_COUNT: 1000,
         _dummy0: Default::default(),
     };
 
