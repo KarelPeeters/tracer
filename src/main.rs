@@ -19,6 +19,9 @@ use vulkano::pipeline::ComputePipeline;
 use vulkano::sync::GpuFuture;
 use wavefront_obj::obj;
 use wavefront_obj::obj::{Primitive, Vertex};
+use material::Material;
+
+mod material;
 
 mod cs {
     vulkano_shaders::shader! {
@@ -30,6 +33,11 @@ mod cs {
 type Vec3 = nalgebra::Vector3<f32>;
 type Point3 = nalgebra::Point3<f32>;
 
+const GLASS_REFRACT: f32 = 1.0 / 1.52;
+
+fn rgb2f32(r: u8, g: u8, b: u8) -> [f32; 3] {
+    [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]
+}
 
 fn vertex_to_point(vertex: &Vertex) -> Point3 {
     Point3::new(vertex.x as f32, vertex.y as f32, vertex.z as f32)
@@ -79,56 +87,36 @@ fn obj_to_triangles(obj: &obj::Object) -> Vec<cs::ty::Triangle> {
     result
 }
 
-struct Material {
-    color: [f32; 3],
-    refract_ratio: f32,
-
-    mirror: f32,
-    diffuse: f32,
-    transparent: f32,
-}
-
-impl Material {
-    fn as_cs_ty(&self) -> cs::ty::Material {
-        let total = self.mirror + self.diffuse + self.transparent;
-
-        let r = cs::ty::Material {
-            color: self.color,
-            refractRatio: self.refract_ratio,
-            keyDiffuse: self.diffuse / total,
-            keyTransparent: 1.0 - self.transparent / total,
-
-            _dummy0: Default::default(),
-        };
-
-        println!("{}", r.keyDiffuse);
-        println!("{}", r.keyTransparent);
-
-        r
-    }
-}
-
 fn main() {
     let spheres: Vec<cs::ty::Sphere> = vec![
+        //light
         cs::ty::Sphere {
-            center: [-3.0, 1.0, 6.0],
+            center: [10.0, 20.0, 10.0],
+            radius: 3.0,
+
+            materialIndex: 1,
+            _dummy0: Default::default(),
+        },
+        //actual spheres
+        cs::ty::Sphere {
+            center: [-3.0, 1.0, 5.0],
             radius: 1.0,
 
-            materialIndex: 0,
+            materialIndex: 2,
             _dummy0: Default::default(),
         },
         cs::ty::Sphere {
             center: [0.0, 1.0, 5.0],
             radius: 1.0,
-            materialIndex: 0,
+            materialIndex: 3,
 
             _dummy0: Default::default(),
         },
         cs::ty::Sphere {
-            center: [3.0, 1.0, 4.0],
+            center: [3.0, 1.0, 5.0],
             radius: 1.0,
 
-            materialIndex: 0,
+            materialIndex: 4,
             _dummy0: Default::default(),
         }
     ];
@@ -137,7 +125,7 @@ fn main() {
         cs::ty::Plane {
             dist: 0.0,
             normal: [0.0, 1.0, 0.0],
-            materialIndex: 1,
+            materialIndex: 0,
 
             _dummy0: Default::default(),
         },
@@ -145,33 +133,49 @@ fn main() {
 
     let lights: Vec<cs::ty::Light> = vec![
         cs::ty::Light {
-            position: [10.0, 20.0, -20.0],
+            position: [10.0, 20.0, 10.0],
             _dummy0: Default::default(),
-            color: [0.5, 0.5, 0.5],
+            color: [1.0, 1.0, 1.0],
             _dummy1: Default::default(),
         },
     ];
 
-    let materials = vec![
-        //object material
-        Material {
-            color: [0.95, 0.95, 0.95],
-            refract_ratio: 0.9,
-
-            mirror: 1.0,
-            diffuse: 1.0,
-            transparent: 6.0,
-        }.as_cs_ty(),
+    let materials: Vec<cs::ty::Material> = vec![
         //floor material
-        Material {
+        Material::Opaque {
             color: [0.9, 0.9, 0.9],
-            refract_ratio: 1.0,
+
+            mirror: 0.2,
+            diffuse: 1.0,
+        },
+
+        //light material
+        Material::Fixed {
+            color: [50.0, 50.0, 50.0],
+        },
+
+        //object materials
+        Material::Opaque {
+            color: rgb2f32(255, 0, 0),
+
+            mirror: 10.0,
+            diffuse: 10.0,
+        },
+        Material::Transparent {
+            color: rgb2f32(255,192,203),
+            refract_ratio: GLASS_REFRACT,
 
             mirror: 0.0,
-            diffuse: 1.0,
-            transparent: 0.0,
-        }.as_cs_ty(),
-    ];
+            diffuse: 0.0,
+            transparent: 10.0,
+        },
+        Material::Opaque {
+            color: rgb2f32(0, 128, 0),
+
+            mirror: 10.0,
+            diffuse: 10.0,
+        },
+    ].iter().map(|m| m.as_cs_ty()).collect();
 
     let mut triangles: Vec<cs::ty::Triangle> = vec![
         /*cs::ty::Triangle {
@@ -213,8 +217,9 @@ fn main() {
 
             _dummy0: Default::default(),
         },
-        SKY_COLOR: [0.529 / 2.0, 0.808 / 2.0, 0.922 / 2.0],
-        SAMPLE_COUNT: 1000,
+        SKY_COLOR: [0.1, 0.1, 0.1], //[0.529 / 2.0, 0.808 / 2.0, 0.922 / 2.0],
+        SAMPLE_COUNT: 5000,
+        SAMPLE_LIGHTS: false as u32,
         _dummy0: Default::default(),
     };
 

@@ -1,22 +1,63 @@
-use rand::distributions::Bernoulli;
+use crate::cs;
 
-use crate::tracer::Color;
+pub enum Material {
+    Fixed {
+        color: [f32; 3]
+    },
+    Opaque {
+        color: [f32; 3],
+        mirror: f32,
+        diffuse: f32,
+    },
+    Transparent {
+        color: [f32; 3],
+        refract_ratio: f32,
 
-#[derive(Debug)]
-pub struct Material {
-    pub reflect_color: Color,
-    pub emission: Color,
-    pub diff_prob: Bernoulli,
-    pub transparent_prob: Bernoulli,
+        mirror: f32,
+        diffuse: f32,
+        transparent: f32,
+    },
 }
 
 impl Material {
-    pub fn basic(color: Color, diff_prob: f64, transparent_prob: f64) -> Material {
-        Material {
-            reflect_color: color,
-            emission: Color::new(0.0, 0.0, 0.0),
-            diff_prob: Bernoulli::new(diff_prob).expect("probability should be in [0..1]"),
-            transparent_prob: Bernoulli::new(transparent_prob).expect("probability should be in [0..1]"),
+    pub fn as_cs_ty(&self) -> cs::ty::Material {
+        match self {
+            Material::Fixed { color } => cs::ty::Material {
+                color: *color,
+                fixedColor: true as u32,
+                refractRatio: 0.0,
+
+                keyDiffuse: 1.0,
+                keyTransparent: 1.0,
+
+                _dummy0: Default::default(),
+            },
+            Material::Opaque { color, mirror, diffuse } => {
+                let total = mirror + diffuse;
+                cs::ty::Material {
+                    color: *color,
+                    fixedColor: false as u32,
+                    refractRatio: 0.0,
+
+                    keyDiffuse: diffuse / total,
+                    keyTransparent: 1.0,
+
+                    _dummy0: Default::default(),
+                }
+            }
+            Material::Transparent { color, refract_ratio, mirror, diffuse, transparent } => {
+                let total = mirror + diffuse + transparent;
+                cs::ty::Material {
+                    color: *color,
+                    fixedColor: false as u32,
+                    refractRatio: *refract_ratio,
+
+                    keyDiffuse: diffuse / total,
+                    keyTransparent: 1.0 - transparent / total,
+
+                    _dummy0: Default::default(),
+                }
+            },
         }
     }
 }

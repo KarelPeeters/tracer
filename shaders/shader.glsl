@@ -15,6 +15,7 @@ layout(push_constant) uniform PushConstants {
     Camera CAMERA;
     vec3 SKY_COLOR;
     uint SAMPLE_COUNT;
+    bool SAMPLE_LIGHTS;
 };
 
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
@@ -27,6 +28,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 // keyTransparent .. 1.0: transparent
 struct Material {
     vec3 color;
+    bool fixedColor;
     float refractRatio;//when going against normal
 
     float keyDiffuse;
@@ -121,6 +123,9 @@ vec3 trace(Ray ray, inout uint seed) {
             Material material = materials[hit.materialIndex];
             mask *= material.color;
 
+            if (material.fixedColor)
+                return mask;
+
             vec3 nextDir;
             vec3 nextStart;
 
@@ -144,8 +149,10 @@ vec3 trace(Ray ray, inout uint seed) {
                 //non transparent
 
                 //diffuse lights
-                vec3 lights = lightsAt(hit.point, hit.normal);
-                result += mask * material.keyDiffuse * lights;
+                if (SAMPLE_LIGHTS) {
+                    vec3 lights = lightsAt(hit.point, hit.normal);
+                    result += mask * material.keyDiffuse * lights;
+                }
 
                 if (key < material.keyDiffuse) {
                     //diffuse
