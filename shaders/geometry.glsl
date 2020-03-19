@@ -14,6 +14,8 @@ struct Triangle {
     Plane plane;
     vec3 point;
     mat3x2 project;
+
+    vec3 renderNormal;
 };
 
 struct Ray {
@@ -74,5 +76,6 @@ Hit rayTriangleIntersect(Ray ray, Triangle triangle) {
             hit.t = INF;
     }
 
+    hit.normal = triangle.renderNormal;
     return hit;
 }

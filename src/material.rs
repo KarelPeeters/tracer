@@ -10,7 +10,8 @@ pub enum Material {
         diffuse: f32,
     },
     Transparent {
-        color: [f32; 3],
+        surface_color: [f32; 3],
+        volumetric_color: [f32; 3],
         refract_ratio: f32,
 
         mirror: f32,
@@ -24,6 +25,7 @@ impl Material {
         match self {
             Material::Fixed { color } => cs::ty::Material {
                 color: *color,
+                volumetricColor: [1.0, 1.0, 1.0],
                 fixedColor: true as u32,
                 refractRatio: 0.0,
 
@@ -36,6 +38,7 @@ impl Material {
                 let total = mirror + diffuse;
                 cs::ty::Material {
                     color: *color,
+                    volumetricColor: [1.0, 1.0, 1.0],
                     fixedColor: false as u32,
                     refractRatio: 0.0,
 
@@ -45,10 +48,14 @@ impl Material {
                     _dummy0: Default::default(),
                 }
             }
-            Material::Transparent { color, refract_ratio, mirror, diffuse, transparent } => {
+            Material::Transparent {
+                surface_color, volumetric_color, refract_ratio,
+                mirror, diffuse, transparent
+            } => {
                 let total = mirror + diffuse + transparent;
                 cs::ty::Material {
-                    color: *color,
+                    color: *surface_color,
+                    volumetricColor: *volumetric_color,
                     fixedColor: false as u32,
                     refractRatio: *refract_ratio,
 
@@ -57,7 +64,7 @@ impl Material {
 
                     _dummy0: Default::default(),
                 }
-            },
+            }
         }
     }
 }

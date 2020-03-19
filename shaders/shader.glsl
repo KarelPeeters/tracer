@@ -29,6 +29,8 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 struct Material {
     vec3 color;
     bool fixedColor;
+
+    vec3 volumetricColor;
     float refractRatio;//when going against normal
 
     float keyDiffuse;
@@ -109,22 +111,35 @@ struct Frame {
     Material material;
 };
 
+vec3 pow(vec3 b, float e) {
+    return vec3(pow(b.x, e), pow(b.y, e), pow(b.z, e));
+}
+
+vec3 divKeepZero(vec3 a, vec3 b) {
+    a /= b;
+    return mix(a, vec3(0.0), isnan(a));
+}
+
 vec3 trace(Ray ray, inout uint seed) {
     vec3 result = vec3(0.0);
     vec3 mask = vec3(1.0);
+    vec3 volumetricMask = vec3(1.0);
 
     for (uint i = 0; i < MAX_BOUNCES; i++) {
         Hit hit = castRay(ray);
 
         if (isinf(hit.t)) {
+            //TODO do volumentrics here as well, basically use exponent inf here
             result += mask * SKY_COLOR;
             break;
         } else {
             Material material = materials[hit.materialIndex];
             mask *= material.color;
+            mask *= pow(volumetricMask, hit.t);
 
-            if (material.fixedColor)
+            if (material.fixedColor) {
                 return mask;
+            }
 
             vec3 nextDir;
             vec3 nextStart;
@@ -137,14 +152,30 @@ vec3 trace(Ray ray, inout uint seed) {
                 float c = - dot(hit.normal, ray.direction);
                 vec3 normal = hit.normal;
 
-                if (c < 0.0) {
-                    r = 1/r;
+                bool into = c > 0.0;
+                if (!into) {
+                    r = 1.0/r;
                     c = -c;
                     normal = -normal;
                 }
 
-                nextDir = r * ray.direction + (r * c - sqrt(1-r*r*(1-c*c))) * normal;
-                nextStart = hit.point + SHADOW_BIAS * nextDir;
+                float x = 1.0 - r*r*(1-c*c);
+                if (x >= 0.0) {
+                    //actual transparancy
+                    if (into) {
+                        volumetricMask *= material.volumetricColor;
+                    } else {
+                        //if volumetricColor is zero is means the mask is going to be zero for that color anyway
+                        volumetricMask = divKeepZero(volumetricMask, material.volumetricColor);
+                    }
+
+                    nextDir = r * ray.direction + (r * c - sqrt(x)) * normal;
+                    nextStart = hit.point + SHADOW_BIAS * nextDir;
+                } else {
+                    //total internal reflection
+                    nextDir = reflect(ray.direction, hit.normal);
+                    nextStart = hit.point - SHADOW_BIAS * hit.normal;
+                }
             } else {
                 //non transparent
 

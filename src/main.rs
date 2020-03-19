@@ -8,7 +8,7 @@ use image::{ImageBuffer, Rgba};
 use nalgebra::{Matrix3x2, Unit};
 use rand::{Rng, thread_rng};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBuffer};
+use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions, Features};
@@ -16,6 +16,7 @@ use vulkano::format::Format;
 use vulkano::image::{Dimensions, StorageImage};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
+use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use wavefront_obj::obj;
 use wavefront_obj::obj::{Primitive, Vertex};
@@ -39,6 +40,10 @@ fn rgb2f32(r: u8, g: u8, b: u8) -> [f32; 3] {
     [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]
 }
 
+fn pow(color: [f32; 3], e: f32) -> [f32; 3] {
+    [color[0].powf(e), color[1].powf(e), color[2].powf(e)]
+}
+
 fn vertex_to_point(vertex: &Vertex) -> Point3 {
     Point3::new(vertex.x as f32, vertex.y as f32, vertex.z as f32)
 }
@@ -51,10 +56,12 @@ fn obj_to_triangles(obj: &obj::Object) -> Vec<cs::ty::Triangle> {
             match shape.primitive {
                 Primitive::Point(_) => {}
                 Primitive::Line(_, _) => {}
-                Primitive::Triangle((avi, ..), (bvi, ..), (cvi, ..)) => {
+                Primitive::Triangle((avi, _, ani), (bvi, ..), (cvi, ..)) => {
                     let a = vertex_to_point(&obj.vertices[avi]);
                     let b = vertex_to_point(&obj.vertices[bvi]);
                     let c = vertex_to_point(&obj.vertices[cvi]);
+
+                    let an = vertex_to_point(&obj.normals[ani.unwrap()]);
 
                     let db = &b - &a;
                     let dc = &c - &a;
@@ -73,11 +80,13 @@ fn obj_to_triangles(obj: &obj::Object) -> Vec<cs::ty::Triangle> {
                         plane: cs::ty::Plane {
                             dist: normal.dot(&a.coords),
                             normal: [normal.x, normal.y, normal.z],
-                            materialIndex: 0,
+                            materialIndex: 3,
                             _dummy0: Default::default(),
                         },
+                        renderNormal: [an.x as f32, an.y as f32, an.z as f32],
                         _dummy0: Default::default(),
                         _dummy1: Default::default(),
+                        _dummy2: Default::default(),
                     })
                 }
             }
@@ -98,7 +107,7 @@ fn main() {
             _dummy0: Default::default(),
         },
         //actual spheres
-        cs::ty::Sphere {
+        /*cs::ty::Sphere {
             center: [-3.0, 1.0, 5.0],
             radius: 1.0,
 
@@ -118,7 +127,7 @@ fn main() {
 
             materialIndex: 4,
             _dummy0: Default::default(),
-        }
+        }*/
     ];
 
     let planes: Vec<cs::ty::Plane> = vec![
@@ -162,7 +171,8 @@ fn main() {
             diffuse: 10.0,
         },
         Material::Transparent {
-            color: rgb2f32(255,192,203),
+            surface_color: [1.0, 1.0, 1.0],
+            volumetric_color: pow(rgb2f32(0, 0, 255), 1.0),
             refract_ratio: GLASS_REFRACT,
 
             mirror: 0.0,
@@ -193,10 +203,10 @@ fn main() {
         }*/
     ];
 
-    /*let obj_str = read_to_string("ignored/models/cube.obj").expect("Error while reading model");
+    let obj_str = read_to_string("ignored/models/cube.obj").expect("Error while reading model");
     let obj_set = obj::parse(obj_str).expect("Error while parsing model");
     let obj_triangles = obj_to_triangles(obj_set.objects.first().expect("No object found"));
-    triangles.extend(obj_triangles);*/
+    triangles.extend(obj_triangles);
 
     let width = 1024;
     let height = 512;
@@ -209,7 +219,7 @@ fn main() {
 
     let push_constants = cs::ty::PushConstants {
         CAMERA: cs::ty::Camera {
-            position: [0.0, 1.5, -8.0],
+            position: [0.0, 1.5, -12.0],
             direction: [0.0, 0.0, 1.0],
             focusDistance: 8.0 + 5.0 - 5.0,
             aperture: 0.0,
@@ -218,7 +228,7 @@ fn main() {
             _dummy0: Default::default(),
         },
         SKY_COLOR: [0.1, 0.1, 0.1], //[0.529 / 2.0, 0.808 / 2.0, 0.922 / 2.0],
-        SAMPLE_COUNT: 5000,
+        SAMPLE_COUNT: 1000,
         SAMPLE_LIGHTS: false as u32,
         _dummy0: Default::default(),
     };
@@ -276,17 +286,21 @@ fn main() {
         .expect("failed to create buffer");
 
     let gpu_start = Instant::now();
-    let command_buffer = AutoCommandBufferBuilder::new(device.clone(), queue_family).unwrap()
+    let command_buffer = AutoCommandBufferBuilder::primary_simultaneous_use(device.clone(), queue_family).unwrap()
         .copy_buffer_to_image(result_buffer.clone(), image.clone()).unwrap()
         .dispatch([width / 8, height / 8, 1], compute_pipeline.clone(), set.clone(), push_constants).unwrap()
         .copy_image_to_buffer(image.clone(), result_buffer.clone()).unwrap()
         .build().unwrap();
 
-    let finished = command_buffer.execute(queue.clone()).unwrap();
-    finished.then_signal_fence_and_flush().unwrap().wait(None).unwrap();
+    sync::now(device.clone())
+        .then_execute(queue.clone(), command_buffer).unwrap()
+        .then_signal_fence_and_flush().unwrap()
+        .wait(None).unwrap();
+
     println!("GPU Calculation took {}s", (Instant::now() - gpu_start).as_secs_f32());
 
     let buffer_content = result_buffer.read().unwrap();
     let image = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, &*buffer_content).unwrap();
+    let x = buffer_content[0];
     image.save("ignored/output.png").unwrap();
 }
