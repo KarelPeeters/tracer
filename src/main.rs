@@ -7,7 +7,7 @@ use std::time::Instant;
 use image::{ImageBuffer, Rgba};
 use nalgebra::{Matrix3x2, Unit};
 use rand::{Rng, thread_rng};
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::descriptor::PipelineLayoutAbstract;
@@ -263,18 +263,24 @@ fn main() {
     let compute_pipeline = Arc::new(ComputePipeline::new(device.clone(), &shader.main_entry_point(), &specialization_constants)
         .expect("failed to create pipeline"));
 
-    let material_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, materials.iter().cloned()).unwrap();
-    let lights_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, lights.iter().cloned()).unwrap();
+    let usage = BufferUsage { storage_buffer: true, ..BufferUsage::none() };
 
-    let spheres_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, spheres.iter().cloned()).unwrap();
-    let planes_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, planes.iter().cloned()).unwrap();
-    let triangles_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, triangles.iter().cloned()).unwrap();
+    let (materials_buffer, materials_fut) = ImmutableBuffer::from_iter(materials.iter().cloned(), usage, queue.clone()).unwrap();
+    let (lights_buffer, lights_fut) = ImmutableBuffer::from_iter(lights.iter().cloned(), usage, queue.clone()).unwrap();
+
+    let (spheres_buffer, spheres_fut) = ImmutableBuffer::from_iter(spheres.iter().cloned(), usage, queue.clone()).unwrap();
+    let (planes_buffer, planes_fut) = ImmutableBuffer::from_iter(planes.iter().cloned(), usage, queue.clone()).unwrap();
+    let (triangles_buffer, triangles_fut) = ImmutableBuffer::from_iter(triangles.iter().cloned(), usage, queue.clone()).unwrap();
+
+    materials_fut.join(lights_fut).join(spheres_fut).join(planes_fut).join(triangles_fut)
+        .then_signal_fence_and_flush().unwrap()
+        .wait(None).unwrap();
 
     let layout = compute_pipeline.layout().descriptor_set_layout(0).unwrap();
 
     let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
         .add_image(image.clone()).unwrap()
-        .add_buffer(material_buffer.clone()).unwrap()
+        .add_buffer(materials_buffer.clone()).unwrap()
         .add_buffer(lights_buffer.clone()).unwrap()
         .add_buffer(spheres_buffer.clone()).unwrap()
         .add_buffer(planes_buffer.clone()).unwrap()
