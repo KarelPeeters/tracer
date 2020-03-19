@@ -115,6 +115,10 @@ vec3 pow(vec3 b, float e) {
     return vec3(pow(b.x, e), pow(b.y, e), pow(b.z, e));
 }
 
+vec3 powInf(vec3 b) {
+    return mix(vec3(0.0), vec3(1.0), lessThan(abs(b-1.0), vec3(0.00001)));
+}
+
 vec3 divKeepZero(vec3 a, vec3 b) {
     a /= b;
     return mix(a, vec3(0.0), isnan(a));
@@ -129,7 +133,7 @@ vec3 trace(Ray ray, inout uint seed) {
         Hit hit = castRay(ray);
 
         if (isinf(hit.t)) {
-            //TODO do volumentrics here as well, basically use exponent inf here
+            mask *= powInf(volumetricMask);
             result += mask * SKY_COLOR;
             break;
         } else {
@@ -153,6 +157,7 @@ vec3 trace(Ray ray, inout uint seed) {
                 vec3 normal = hit.normal;
 
                 bool into = c > 0.0;
+                bool outOf = c < 0.0;
                 if (!into) {
                     r = 1.0/r;
                     c = -c;
@@ -164,7 +169,8 @@ vec3 trace(Ray ray, inout uint seed) {
                     //actual transparancy
                     if (into) {
                         volumetricMask *= material.volumetricColor;
-                    } else {
+                    }
+                    if (outOf) {
                         //if volumetricColor is zero is means the mask is going to be zero for that color anyway
                         volumetricMask = divKeepZero(volumetricMask, material.volumetricColor);
                     }
