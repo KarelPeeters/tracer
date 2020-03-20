@@ -4,8 +4,9 @@ use std::fs::read_to_string;
 use std::sync::Arc;
 use std::time::Instant;
 
-use image::{ImageBuffer, Rgba};
-use nalgebra::{Matrix3x2, Unit};
+use image::{ImageBuffer, Rgb, Rgba};
+use nalgebra::{Matrix3x2, sup, Unit};
+use palette::{LinSrgb, Srgb};
 use rand::{Rng, thread_rng};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
@@ -20,6 +21,7 @@ use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use wavefront_obj::obj;
 use wavefront_obj::obj::{Primitive, Vertex};
+
 use material::Material;
 
 mod material;
@@ -36,8 +38,13 @@ type Point3 = nalgebra::Point3<f32>;
 
 const GLASS_REFRACT: f32 = 1.0 / 1.52;
 
-fn rgb2f32(r: u8, g: u8, b: u8) -> [f32; 3] {
-    [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]
+fn srgb(r: u8, g: u8, b: u8) -> [f32; 3] {
+    srgb_f32(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
+}
+
+fn srgb_f32(r: f32, g: f32, b: f32) -> [f32; 3] {
+    let lin = Srgb::new(r, g, b).into_linear();
+    [lin.red, lin.green, lin.blue]
 }
 
 fn pow(color: [f32; 3], e: f32) -> [f32; 3] {
@@ -107,7 +114,7 @@ fn main() {
             _dummy0: Default::default(),
         },
         //actual spheres
-        /*cs::ty::Sphere {
+        cs::ty::Sphere {
             center: [-3.0, 1.0, 5.0],
             radius: 1.0,
 
@@ -127,7 +134,7 @@ fn main() {
 
             materialIndex: 4,
             _dummy0: Default::default(),
-        }*/
+        }
     ];
 
     let planes: Vec<cs::ty::Plane> = vec![
@@ -144,7 +151,7 @@ fn main() {
         cs::ty::Light {
             position: [10.0, 20.0, 10.0],
             _dummy0: Default::default(),
-            color: [1.0, 1.0, 1.0],
+            color: srgb_f32(1.0, 1.0, 1.0),
             _dummy1: Default::default(),
         },
     ];
@@ -165,14 +172,14 @@ fn main() {
 
         //object materials
         Material::Opaque {
-            color: rgb2f32(255, 0, 0),
+            color: srgb(255, 0, 0),
 
             mirror: 10.0,
             diffuse: 10.0,
         },
         Material::Transparent {
             surface_color: [1.0, 1.0, 1.0],
-            volumetric_color: pow(rgb2f32(0, 0, 255), 1.0),
+            volumetric_color: pow(srgb(150, 150, 255), 1.0),
             refract_ratio: GLASS_REFRACT,
 
             mirror: 0.0,
@@ -180,7 +187,7 @@ fn main() {
             transparent: 10.0,
         },
         Material::Opaque {
-            color: rgb2f32(0, 128, 0),
+            color: srgb(0, 128, 0),
 
             mirror: 10.0,
             diffuse: 10.0,
@@ -206,11 +213,12 @@ fn main() {
     let obj_str = read_to_string("ignored/models/cube.obj").expect("Error while reading model");
     let obj_set = obj::parse(obj_str).expect("Error while parsing model");
     let obj_triangles = obj_to_triangles(obj_set.objects.first().expect("No object found"));
-    triangles.extend(obj_triangles);
+    // triangles.extend(obj_triangles);
 
-    let width = 1024;
-    let height = 512;
+    let super_sample_count: usize = 500;
 
+    let width = 1024 * 2;
+    let height = 512 * 2;
     let aspect_ratio = (width as f32) / (height as f32);
 
     let specialization_constants = cs::SpecializationConstants {
@@ -228,7 +236,7 @@ fn main() {
             _dummy0: Default::default(),
         },
         SKY_COLOR: [0.1, 0.1, 0.1], //[0.529 / 2.0, 0.808 / 2.0, 0.922 / 2.0],
-        SAMPLE_COUNT: 1000,
+        SAMPLE_COUNT: 1300,
         SAMPLE_LIGHTS: false as u32,
         _dummy0: Default::default(),
     };
@@ -287,26 +295,49 @@ fn main() {
         .add_buffer(triangles_buffer.clone()).unwrap()
         .build().unwrap());
 
+    let mut result = vec![vec![LinSrgb::new(0.0, 0.0, 0.0); height as usize]; width as usize];
     let mut rng = thread_rng();
-    let result_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), true, (0..width * height * 4).map(|_| rng.gen()))
-        .expect("failed to create buffer");
 
-    let gpu_start = Instant::now();
-    let command_buffer = AutoCommandBufferBuilder::primary_simultaneous_use(device.clone(), queue_family).unwrap()
-        .copy_buffer_to_image(result_buffer.clone(), image.clone()).unwrap()
-        .dispatch([width / 8, height / 8, 1], compute_pipeline.clone(), set.clone(), push_constants).unwrap()
-        .copy_image_to_buffer(image.clone(), result_buffer.clone()).unwrap()
-        .build().unwrap();
+    for i in 0..super_sample_count {
+        // let mut write = result_buffer.write().unwrap();
+        // for j in 0..result_size {
+        //     write[j as usize] = rng.gen();
+        // }
+        // drop(write);
 
-    sync::now(device.clone())
-        .then_execute(queue.clone(), command_buffer).unwrap()
-        .then_signal_fence_and_flush().unwrap()
-        .wait(None).unwrap();
+        println!("Super sample {}/{}", i, super_sample_count);
 
-    println!("GPU Calculation took {}s", (Instant::now() - gpu_start).as_secs_f32());
+        let result_size = width * height * 4;
+        let result_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), true, (0..result_size).map(|_| rng.gen()))
+            .expect("failed to create buffer");
 
-    let buffer_content = result_buffer.read().unwrap();
-    let image = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, &*buffer_content).unwrap();
-    let x = buffer_content[0];
+        let gpu_start = Instant::now();
+        let command_buffer = AutoCommandBufferBuilder::primary_simultaneous_use(device.clone(), queue_family).unwrap()
+            .copy_buffer_to_image(result_buffer.clone(), image.clone()).unwrap()
+            .dispatch([width / 8, height / 8, 1], compute_pipeline.clone(), set.clone(), push_constants).unwrap()
+            .copy_image_to_buffer(image.clone(), result_buffer.clone()).unwrap()
+            .build().unwrap();
+
+        sync::now(device.clone())
+            .then_execute(queue.clone(), command_buffer).unwrap()
+            .then_signal_fence_and_flush().unwrap()
+            .wait(None).unwrap();
+
+        println!("GPU Calculation took {}s", (Instant::now() - gpu_start).as_secs_f32());
+
+        let buffer_content = result_buffer.read().unwrap();
+        let image = ImageBuffer::<Rgba<u8>, _>::from_raw(width, height, &*buffer_content).unwrap();
+
+        for (x, y, pix) in image.enumerate_pixels() {
+            result[x as usize][y as usize] +=
+                LinSrgb::new(pix.0[0], pix.0[1], pix.0[2]).into_format()
+                    / (super_sample_count as f32);
+        }
+    }
+
+    let image = ImageBuffer::<Rgb<u8>, _>::from_fn(width, height, |x, y| {
+        let color = Srgb::from_linear(result[x as usize][y as usize]).into_format();
+        image::Rgb([color.red, color.green, color.blue])
+    });
     image.save("ignored/output.png").unwrap();
 }
