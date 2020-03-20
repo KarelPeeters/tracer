@@ -218,8 +218,7 @@ void main() {
 
     vec3 total = vec3(0);
     for (uint i = 0; i < SAMPLE_COUNT; i++) {
-        //TODO properly use the size of a pixel here
-        vec2 offset = vec2(randomFloat(seed)-0.5, randomFloat(seed)-0.5) / 1000;
+        vec2 offset = vec2(randomFloat(seed)-0.5, randomFloat(seed)-0.5) / imageSize(result);
         vec2 rayPos = centeredPos + offset;
         Ray primaryRay = Ray(CAMERA.position, normalize(vec3(rayPos, 0.0) + CAMERA.direction));
 
