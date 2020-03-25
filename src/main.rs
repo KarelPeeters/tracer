@@ -38,6 +38,10 @@ type Point3 = nalgebra::Point3<f32>;
 
 const GLASS_REFRACT: f32 = 1.0 / 1.52;
 
+fn scale_srgb(color: [f32; 3], f: f32) -> [f32; 3] {
+    [color[0] * f, color[1] * f, color[2] * f]
+}
+
 fn srgb(r: u8, g: u8, b: u8) -> [f32; 3] {
     srgb_f32(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
 }
@@ -215,10 +219,10 @@ fn main() {
     let obj_triangles = obj_to_triangles(obj_set.objects.first().expect("No object found"));
     // triangles.extend(obj_triangles);
 
-    let super_sample_count: usize = 500;
+    let super_sample_count: usize = 1;
 
-    let width = 1024 * 2;
-    let height = 512 * 2;
+    let width = 1024;
+    let height = 512;
     let aspect_ratio = (width as f32) / (height as f32);
 
     let specialization_constants = cs::SpecializationConstants {
@@ -236,7 +240,7 @@ fn main() {
             _dummy0: Default::default(),
         },
         SKY_COLOR: [0.1, 0.1, 0.1], //[0.529 / 2.0, 0.808 / 2.0, 0.922 / 2.0],
-        SAMPLE_COUNT: 1300,
+        SAMPLE_COUNT: 4000,
         SAMPLE_LIGHTS: false as u32,
         _dummy0: Default::default(),
     };
@@ -244,9 +248,13 @@ fn main() {
     let instance = Instance::new(None, &InstanceExtensions::none(), None)
         .expect("failed to create instance");
 
+    for physical in PhysicalDevice::enumerate(&instance) {
+        println!("Name: {:?}", physical.name());
+    }
+
     let physical = PhysicalDevice::enumerate(&instance).next()
         .expect("no device found");
-    println!("Name: {:?}", physical.name());
+    println!("Picked {:?}", physical.name());
     println!("Type: {:?}", physical.ty());
     println!("Max group count: {:?}", physical.limits().max_compute_work_group_count());
     println!("Max group size: {:?}", physical.limits().max_compute_work_group_size());
