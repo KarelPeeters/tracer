@@ -13,6 +13,7 @@ pub enum Material {
         surface_color: [f32; 3],
         volumetric_color: [f32; 3],
         refract_ratio: f32,
+        scatter_coefficient: f32,
 
         mirror: f32,
         diffuse: f32,
@@ -27,8 +28,9 @@ impl Material {
                 color: *color,
                 volumetricColor: [1.0, 1.0, 1.0],
                 fixedColor: true as u32,
-                refractRatio: 0.0,
+                scatteringCoef: 0.0,
 
+                refractRatio: 0.0,
                 keyDiffuse: 1.0,
                 keyTransparent: 1.0,
 
@@ -40,8 +42,9 @@ impl Material {
                     color: *color,
                     volumetricColor: [1.0, 1.0, 1.0],
                     fixedColor: false as u32,
-                    refractRatio: 0.0,
+                    scatteringCoef: 0.0,
 
+                    refractRatio: 0.0,
                     keyDiffuse: diffuse / total,
                     keyTransparent: 1.0,
 
@@ -49,7 +52,7 @@ impl Material {
                 }
             }
             Material::Transparent {
-                surface_color, volumetric_color, refract_ratio,
+                surface_color, volumetric_color, refract_ratio, scatter_coefficient: scatter_coef,
                 mirror, diffuse, transparent
             } => {
                 let total = mirror + diffuse + transparent;
@@ -58,6 +61,7 @@ impl Material {
                     volumetricColor: *volumetric_color,
                     fixedColor: false as u32,
                     refractRatio: *refract_ratio,
+                    scatteringCoef: *scatter_coef,
 
                     keyDiffuse: diffuse / total,
                     keyTransparent: 1.0 - transparent / total,

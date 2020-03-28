@@ -1,3 +1,6 @@
+const float PI = 3.1415926;
+const float PI2 = 2 * PI;
+
 void xorshift(inout uint seed) {
     seed ^= seed >> 13;
     seed ^= seed << 17;
@@ -19,7 +22,7 @@ float randomFloat(inout uint seed)
 //return a random point in the unit disk with a uniform distribution
 vec2 randomUnitDisk(inout uint seed) {
     float r = sqrt(randomFloat(seed));
-    float t = randomFloat(seed) * 2 * 3.1415926;
+    float t = randomFloat(seed) * PI2;
 
     return vec2(cos(t), sin(t)) * r;
 }
@@ -33,4 +36,11 @@ vec3 randomCosineUnitHemi(inout uint seed, vec3 normal) {
     vec3 yaxis = cross(normal, xaxis);
 
     return disk.x * xaxis + disk.y * yaxis + z * normal;
+}
+
+vec3 randomUnitSphere(inout uint seed) {
+    float z = randomFloat(seed) * 2 - 1;
+    float t = randomFloat(seed) * PI2;
+    float r = sqrt(1-z*z);
+    return vec3(cos(t)*r, sin(t)*r, z);
 }

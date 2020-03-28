@@ -9,6 +9,9 @@ struct Camera {
     float focusDistance;
     float aperture;
     float aspectRatio;
+
+    vec3 startVolumetricMask;
+    float startScatteringCoef;
 };
 
 layout(push_constant) uniform PushConstants {
@@ -31,6 +34,8 @@ struct Material {
     bool fixedColor;
 
     vec3 volumetricColor;
+    float scatteringCoef;
+
     float refractRatio;//when going against normal
 
     float keyDiffuse;
@@ -127,7 +132,9 @@ vec3 divKeepZero(vec3 a, vec3 b) {
 vec3 trace(Ray ray, inout uint seed) {
     vec3 result = vec3(0.0);
     vec3 mask = vec3(1.0);
-    vec3 volumetricMask = vec3(1.0);
+
+    vec3 volumetricMask = CAMERA.startVolumetricMask;
+    float scatteringCoef = CAMERA.startScatteringCoef;
 
     for (uint i = 0; i < MAX_BOUNCES; i++) {
         Hit hit = castRay(ray);
@@ -137,6 +144,17 @@ vec3 trace(Ray ray, inout uint seed) {
             result += mask * SKY_COLOR;
             break;
         } else {
+            float scatterT = -log(randomFloat(seed))/scatteringCoef;
+            if (scatterT < hit.t) {
+                //scatter
+                mask *= pow(volumetricMask, scatterT);
+                vec3 position = ray.start + scatterT * ray.direction;
+                vec3 nextDir = ray.direction;//randomUnitSphere(seed);
+                ray = Ray(position, nextDir);
+                continue;
+            }
+
+            //continue to next hit
             Material material = materials[hit.materialIndex];
             mask *= material.color;
             mask *= pow(volumetricMask, hit.t);
@@ -169,10 +187,12 @@ vec3 trace(Ray ray, inout uint seed) {
                     //actual transparancy
                     if (into) {
                         volumetricMask *= material.volumetricColor;
+                        scatteringCoef += material.scatteringCoef;
                     }
                     if (outOf) {
                         //if volumetricColor is zero is means the mask is going to be zero for that color anyway
                         volumetricMask = divKeepZero(volumetricMask, material.volumetricColor);
+                        scatteringCoef -= material.scatteringCoef;
                     }
 
                     nextDir = r * ray.direction + (r * c - sqrt(x)) * normal;
