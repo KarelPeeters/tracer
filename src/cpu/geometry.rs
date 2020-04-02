@@ -1,15 +1,38 @@
 #![allow(dead_code)]
 
-use std::ops::Mul;
-
 use nalgebra::Unit;
+use std::fmt::{Debug, Formatter};
+use std::ops::Mul;
 
 use crate::common::scene::{Object, Point3, Shape, Transform, Vec3};
 
-#[derive(Debug, Clone)]
+pub struct PrettyVec { x: f32, y: f32, z: f32 }
+
+impl PrettyVec {
+    fn from_vec(v: &Vec3) -> PrettyVec { PrettyVec { x: v.x, y: v.y, z: v.z } }
+    fn from_point(v: &Point3) -> PrettyVec { PrettyVec { x: v.x, y: v.y, z: v.z } }
+    fn from_unit(v: &Unit<Vec3>) -> PrettyVec { PrettyVec { x: v.x, y: v.y, z: v.z } }
+}
+
+impl Debug for PrettyVec {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({}, {}, {})", self.x, self.y, self.z)
+    }
+}
+
+#[derive(Clone)]
 pub struct Ray {
     pub start: Point3,
     pub direction: Unit<Vec3>,
+}
+
+impl Debug for Ray {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ray")
+            .field("start", &PrettyVec::from_point(&self.start))
+            .field("direction", &PrettyVec::from_unit(&self.direction))
+            .finish()
+    }
 }
 
 impl Ray {
@@ -36,19 +59,30 @@ impl Mul<&Ray> for &Transform {
     }
 }
 
-#[derive(Debug)]
 pub struct Hit {
     pub t: f32,
     pub point: Point3,
     pub normal: Unit<Vec3>,
 }
 
+impl Debug for Hit {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Hit")
+            .field("t", &self.t)
+            .field("point", &PrettyVec::from_point(&self.point))
+            .field("normal", &PrettyVec::from_unit(&self.normal))
+            .finish()
+    }
+}
+
 impl Hit {
     fn transform(&self, transform: &Transform, direction: Unit<Vec3>) -> Hit {
+        let inv_transpose = Transform::from_matrix_unchecked(transform.inverse().into_inner().transpose());
+
         Hit {
             t: self.t / (transform * direction.as_ref()).norm(),
             point: transform * &self.point,
-            normal: Unit::new_normalize(transform.inverse_transform_vector(&self.normal)),
+            normal: Unit::new_normalize(inv_transpose.transform_vector(&self.normal)),
         }
     }
 }

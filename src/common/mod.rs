@@ -1,5 +1,6 @@
-use crate::common::scene::Scene;
 use image::ImageBuffer;
+
+use crate::common::scene::Scene;
 
 pub mod scene;
 

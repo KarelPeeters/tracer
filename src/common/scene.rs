@@ -15,7 +15,9 @@ pub enum Shape {
 
 #[derive(Copy, Clone, Debug)]
 pub struct Material {
-    pub color: Color,
+    pub emission: Color,
+    pub albedo: Color,
+    pub diffuse: bool,
 }
 
 #[derive(Debug)]
@@ -36,6 +38,6 @@ pub struct Camera {
 #[derive(Debug)]
 pub struct Scene {
     pub objects: Vec<Object>,
-    pub sky: Material,
+    pub sky_emission: Color,
     pub camera: Camera,
 }

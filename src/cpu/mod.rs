@@ -1,12 +1,12 @@
 use image::ImageBuffer;
 use nalgebra::Unit;
-
-use rand::{thread_rng, Rng};
-
+use rand::{Rng, thread_rng};
+use rand::distributions::Distribution;
+use rand_distr::UnitSphere;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
-use crate::common::scene::{Camera, Color, Object, Point3, Scene, Transform, Vec3};
 use crate::common::Renderer;
+use crate::common::scene::{Camera, Color, Object, Point3, Scene, Transform, Vec3};
 use crate::cpu::geometry::{Hit, Intersect, Ray};
 
 mod geometry;
@@ -68,31 +68,49 @@ impl RayCamera {
         let (dx, dy) = if self.anti_alias {
             rng.gen()
         } else {
-            (0.0, 0.0)
+            (0.5, 0.5)
         };
 
         let x = ((x as f32 + dx) / self.width - 0.5) * self.x_span;
         let y = ((self.height - (y as f32 + dy)) / self.height - 0.5) * self.y_span;
 
-        &self.transform
-            * &Ray {
-                start: Point3::origin(),
-                direction: Unit::new_normalize(Vec3::new(x, y, -1.0)),
-            }
+        &self.transform * &Ray {
+            start: Point3::origin(),
+            direction: Unit::new_normalize(Vec3::new(x, y, -1.0)),
+        }
     }
 }
 
 const SHADOW_BIAS: f32 = 0.0001;
 
-fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, _rng: &mut R, bounces_left: usize) -> Color {
+fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize) -> Color {
     if bounces_left == 0 {
         return Color::new(0.0, 0.0, 0.0);
     }
 
     if let Some((object, hit)) = first_hit(scene, ray) {
-        object.material.color
+        let into = hit.normal.dot(&ray.direction) > 0.0;
+        let normal = if into { -hit.normal } else { hit.normal };
+
+        let (weight, next_direction) = if object.material.diffuse {
+            let next_direction = Unit::new_unchecked(Vec3::from_column_slice(&UnitSphere.sample(rng)));
+
+            let next_direction = if next_direction.dot(&normal) < 0.0 { -next_direction } else { next_direction };
+            let weight = next_direction.dot(&normal);
+            (weight, next_direction)
+        } else {
+            (1.0, reflect_direction(&ray.direction, &normal))
+        };
+
+        let next_ray = Ray {
+            start: hit.point + SHADOW_BIAS * &*normal,
+            direction: next_direction,
+        };
+
+        object.material.emission
+            + object.material.albedo * weight * trace_ray(scene, &next_ray, rng, bounces_left - 1)
     } else {
-        scene.sky.color
+        scene.sky_emission
     }
 }
 
