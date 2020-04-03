@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
-use nalgebra::Unit;
 use std::fmt::{Debug, Formatter};
 use std::ops::Mul;
 
 use crate::common::scene::{Object, Point3, Shape, Transform, Vec3};
+use nalgebra::Unit;
 
 pub struct PrettyVec { x: f32, y: f32, z: f32 }
 
@@ -53,8 +53,8 @@ impl Mul<&Ray> for &Transform {
 
     fn mul(self, rhs: &Ray) -> Self::Output {
         Ray {
-            start: self * rhs.start,
-            direction: Unit::new_normalize(self * rhs.direction.as_ref()),
+            start: self.transform_point(&rhs.start),
+            direction: Unit::new_normalize(self.transform_vector(rhs.direction.as_ref())),
         }
     }
 }
@@ -81,7 +81,7 @@ impl Hit {
 
         Hit {
             t: self.t / (transform * direction.as_ref()).norm(),
-            point: transform * &self.point,
+            point: transform.transform_point(&self.point),
             normal: Unit::new_normalize(inv_transpose.transform_vector(&self.normal)),
         }
     }
@@ -108,7 +108,7 @@ fn sphere_intersect(ray: Ray) -> Option<Hit> {
     let point = ray.at(t);
     Some(Hit {
         t,
-        point,
+        point: point.clone(),
         normal: Unit::new_unchecked(point.coords),
     })
 }
@@ -153,6 +153,6 @@ impl Intersect for Object {
             debug_assert!(hit.t >= 0.0);
         }
 
-        hit.map(|hit| hit.transform(&self.transform, ray.direction))
+        hit.map(|hit| hit.transform(&self.transform, ray.direction.clone()))
     }
 }

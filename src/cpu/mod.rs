@@ -103,7 +103,7 @@ fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize)
         };
 
         let next_ray = Ray {
-            start: hit.point + SHADOW_BIAS * &*normal,
+            start: hit.point + normal.as_ref() * SHADOW_BIAS,
             direction: next_direction,
         };
 

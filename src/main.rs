@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let fov_horizontal: f32 = 100.0;
 
-    let vertical = Rotation3::new(PI / 2.0 * Vec3::x());
+    let vertical = Rotation3::new(Vec3::new(PI / 2.0, 0.0, 0.0));
     let black = Color::new(0.0, 0.0, 0.0);
 
     let scene = Scene {
@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     emission: black,
                     diffuse: true,
                 },
-                transform: convert(Translation3::new(0.0, -1.0, 0.0) * vertical),
+                transform: convert(Translation3::new(0.0, -1.0, 0.0) * &vertical),
             },
             Object {
                 shape: Shape::Sphere,
