@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         sky_emission: color_by_name("white") * 1.5,
         camera: Camera {
             fov_horizontal: fov_horizontal.to_radians(),
-            transform: convert(Translation3::new(0.0, 0.0, 2.0)),
+            transform: convert(Translation3::new(0.0, 0.0, 3.0)),
         },
     };
 

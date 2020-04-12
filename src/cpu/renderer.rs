@@ -1,12 +1,14 @@
+use std::f32;
+
 use image::ImageBuffer;
 use nalgebra::Unit;
 use rand::{Rng, thread_rng};
 use rand::distributions::Distribution;
-use rand_distr::UnitSphere;
+use rand_distr::UnitDisc;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
 use crate::common::Renderer;
-use crate::common::scene::{Camera, Color, Object, Point3, Scene, Transform, Vec3};
+use crate::common::scene::{Camera, Color, Material, Object, Point3, Scene, Transform, Vec2, Vec3};
 use crate::cpu::geometry::{Hit, Intersect, Ray};
 
 pub struct CpuRenderer {
@@ -86,22 +88,16 @@ fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize)
         return Color::new(0.0, 0.0, 0.0);
     }
 
-    if let Some((object, hit)) = first_hit(scene, ray) {
+    if let Some((object, mut hit)) = first_hit(scene, ray) {
         let into = hit.normal.dot(&ray.direction) > 0.0;
-        let normal = if into { -hit.normal } else { hit.normal };
+        if into {
+            hit.normal = -hit.normal;
+        }
 
-        let (weight, next_direction) = if object.material.diffuse {
-            let next_direction = Unit::new_unchecked(Vec3::from_column_slice(&UnitSphere.sample(rng)));
-
-            let next_direction = if next_direction.dot(&normal) < 0.0 { -next_direction } else { next_direction };
-            let weight = next_direction.dot(&normal);
-            (weight, next_direction)
-        } else {
-            (1.0, reflect_direction(&ray.direction, &normal))
-        };
+        let (weight, next_direction) = sample_direction(&ray, &hit, &object.material, rng);
 
         let next_ray = Ray {
-            start: hit.point + normal.as_ref() * SHADOW_BIAS,
+            start: hit.point + hit.normal.as_ref() * SHADOW_BIAS,
             direction: next_direction,
         };
 
@@ -109,6 +105,19 @@ fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize)
             + object.material.albedo * weight * trace_ray(scene, &next_ray, rng, bounces_left - 1)
     } else {
         scene.sky_emission
+    }
+}
+
+fn sample_direction<R: Rng>(ray: &Ray, hit: &Hit, material: &Material, rng: &mut R) -> (f32, Unit<Vec3>) {
+    if material.diffuse {
+        let disk = Vec2::from_column_slice(&UnitDisc.sample(rng));
+        let z = (1.0 - disk.norm_squared()).sqrt();
+        let x_axis = Unit::new_normalize(Vec3::new(-hit.normal.y, hit.normal.x, 0.0));
+        let y_axis = Unit::new_unchecked(hit.normal.cross(&x_axis));
+        let next_direction = Unit::new_unchecked(*x_axis * disk.x + *y_axis * disk.y + *hit.normal * z);
+        (0.5, next_direction)
+    } else {
+        (1.0, reflect_direction(&ray.direction, &hit.normal))
     }
 }
 
