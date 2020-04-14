@@ -31,11 +31,13 @@ impl Renderer for CpuRenderer {
 
                 for _ in 0..self.sample_count {
                     let ray = camera.ray(&mut rng, x, y);
-                    total += trace_ray(scene, &ray, &mut rng, self.max_bounces);
+                    total += trace_ray(scene, &ray, &mut rng, self.max_bounces, true);
                 }
 
                 let average = total / (self.sample_count as f32);
-                let data = palette::Srgb::from_linear(average).into_format();
+
+                let srgb = palette::Srgb::from_linear(average);
+                let data = srgb.into_format();
                 *p = image::Rgb([data.red, data.green, data.blue]);
             }
         });
@@ -83,26 +85,55 @@ impl RayCamera {
 
 const SHADOW_BIAS: f32 = 0.0001;
 
-fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize) -> Color {
+fn sample_lights<R: Rng>(scene: &Scene, next_start: Point3, rng: &mut R, hit: &Hit) -> Color {
+    let mut result = Color::new(0.0, 0.0, 0.0);
+
+    for light in &scene.objects {
+        if is_black(light.material.emission) { continue; }
+
+        let (weight, target) = light.sample(rng);
+        let light_ray = Ray { start: next_start, direction: Unit::new_normalize(target - &next_start) };
+
+        match first_hit(scene, &light_ray) {
+            Some((object, _)) if std::ptr::eq(object, light) => {
+                let abs_cos = light_ray.direction.dot(&hit.normal).abs();
+                result += light.material.emission * weight * abs_cos * light.area_seen_from(&next_start);
+            }
+            Some(_) => {} //another object is blocking the light
+            None => {} //hit nothing
+        }
+    }
+
+    result
+}
+
+fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize, spectral: bool) -> Color {
     if bounces_left == 0 {
         return Color::new(0.0, 0.0, 0.0);
     }
 
     if let Some((object, mut hit)) = first_hit(scene, ray) {
-        let into = hit.normal.dot(&ray.direction) > 0.0;
-        if into {
+        let into = hit.normal.dot(&ray.direction) < 0.0;
+        if !into {
             hit.normal = -hit.normal;
         }
 
-        let (weight, next_direction) = sample_direction(&ray, &hit, &object.material, rng);
+        let next_start = hit.point + hit.normal.as_ref() * SHADOW_BIAS;
+        let light_contribution = sample_lights(scene, next_start, rng, &hit);
 
+        let (weight, next_direction) = sample_direction(&ray, &hit, &object.material, rng);
         let next_ray = Ray {
-            start: hit.point + hit.normal.as_ref() * SHADOW_BIAS,
+            start: next_start,
             direction: next_direction,
         };
+        let next_contribution = trace_ray(scene, &next_ray, rng, bounces_left - 1, false);
+        let external_contribution = object.material.albedo * (light_contribution + next_contribution * weight);
 
-        object.material.emission
-            + object.material.albedo * weight * trace_ray(scene, &next_ray, rng, bounces_left - 1)
+        if spectral {
+            object.material.emission + external_contribution
+        } else {
+            external_contribution
+        }
     } else {
         scene.sky_emission
     }
@@ -131,4 +162,8 @@ fn first_hit<'a>(scene: &'a Scene, ray: &Ray) -> Option<(&'a Object, Hit)> {
 
 fn reflect_direction(vec: &Unit<Vec3>, normal: &Unit<Vec3>) -> Unit<Vec3> {
     Unit::new_unchecked(vec.as_ref() - &normal.scale(2.0 * vec.dot(normal)))
+}
+
+fn is_black(color: Color) -> bool {
+    return color == Color::new(0.0, 0.0, 0.0);
 }

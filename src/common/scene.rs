@@ -4,7 +4,7 @@ pub type Point3 = nalgebra::Point3<f32>;
 pub type Color = palette::LinSrgb;
 pub type Transform = nalgebra::Affine3<f32>;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Shape {
     //unit sphere with center at origin
     Sphere,
@@ -12,6 +12,8 @@ pub enum Shape {
     Plane,
     //triangle with corners at (0,0,0), (1,0,0) and (0,1,0)
     Triangle,
+    //cylinder with radius 1 around the y-axis
+    Cylinder,
 }
 
 #[derive(Copy, Clone, Debug)]

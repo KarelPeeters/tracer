@@ -3,15 +3,20 @@
 use std::fmt::{Debug, Formatter};
 use std::ops::Mul;
 
-use crate::common::scene::{Object, Point3, Shape, Transform, Vec3};
+use more_asserts::{assert_lt, debug_assert_lt};
 use nalgebra::Unit;
+use rand::distributions::Distribution;
+use rand::Rng;
+use rand_distr::UnitSphere;
+
+use crate::common::scene::{Object, Point3, Shape, Transform, Vec3};
 
 pub struct PrettyVec { x: f32, y: f32, z: f32 }
 
 impl PrettyVec {
-    fn from_vec(v: &Vec3) -> PrettyVec { PrettyVec { x: v.x, y: v.y, z: v.z } }
-    fn from_point(v: &Point3) -> PrettyVec { PrettyVec { x: v.x, y: v.y, z: v.z } }
-    fn from_unit(v: &Unit<Vec3>) -> PrettyVec { PrettyVec { x: v.x, y: v.y, z: v.z } }
+    pub fn from_vec(v: &Vec3) -> PrettyVec { PrettyVec { x: v.x, y: v.y, z: v.z } }
+    pub fn from_point(v: &Point3) -> PrettyVec { PrettyVec { x: v.x, y: v.y, z: v.z } }
+    pub fn from_unit(v: &Unit<Vec3>) -> PrettyVec { PrettyVec { x: v.x, y: v.y, z: v.z } }
 }
 
 impl Debug for PrettyVec {
@@ -87,7 +92,7 @@ impl Hit {
     }
 }
 
-fn sphere_intersect(ray: Ray) -> Option<Hit> {
+fn sphere_intersect(ray: &Ray) -> Option<Hit> {
     let b: f32 = ray.start.coords.dot(&ray.direction);
     let c: f32 = ray.start.coords.norm_squared() - 1.0;
 
@@ -105,7 +110,13 @@ fn sphere_intersect(ray: Ray) -> Option<Hit> {
         t_far
     };
 
-    let point = ray.at(t);
+    let mut point = ray.at(t);
+    point.coords.normalize_mut(); //renormalize for better accuracy
+
+    if point != point {
+        return None;
+    }
+
     Some(Hit {
         t,
         point: point.clone(),
@@ -113,7 +124,7 @@ fn sphere_intersect(ray: Ray) -> Option<Hit> {
     })
 }
 
-fn plane_intersect(ray: Ray) -> Option<Hit> {
+fn plane_intersect(ray: &Ray) -> Option<Hit> {
     let t = -ray.start.z / ray.direction.z;
 
     if !t.is_finite() || t < 0.0 {
@@ -127,7 +138,7 @@ fn plane_intersect(ray: Ray) -> Option<Hit> {
     }
 }
 
-fn triangle_intersect(ray: Ray) -> Option<Hit> {
+fn triangle_intersect(ray: &Ray) -> Option<Hit> {
     plane_intersect(ray).filter(|hit| {
         let x = hit.point.x;
         let y = hit.point.y;
@@ -135,24 +146,98 @@ fn triangle_intersect(ray: Ray) -> Option<Hit> {
     })
 }
 
+fn cylinder_intersect(ray: &Ray) -> Option<Hit> {
+    //work in xz plane
+    let start = ray.start.xz();
+    let (direction, dir_2d_norm) = Unit::new_and_get(ray.direction.xz());
+
+    let b: f32 = start.coords.dot(&direction);
+    let c: f32 = start.coords.norm_squared() - 1.0;
+
+    let d = b * b - c;
+    if d < 0.0 || (c > 0.0 && b > 0.0) {
+        return None;
+    }
+
+    let t_near = -b - d.sqrt();
+    let t_far = -b + d.sqrt();
+
+    let t = if t_near >= 0.0 {
+        t_near
+    } else {
+        t_far
+    };
+
+    //scale back to 3D
+    let t = t / dir_2d_norm;
+
+    let mut point = ray.at(t);
+    let normal = Unit::new_normalize(Vec3::new(point.x, 0.0, point.z));
+    point.x = normal.x; //renormalize point for better accuracy
+    point.z = normal.z;
+
+    if point != point {
+        return None;
+    };
+
+    Some(Hit { t, point, normal })
+}
+
 pub trait Intersect {
     fn intersect(&self, ray: &Ray) -> Option<Hit>;
+
+    fn area_seen_from(&self, from: &Point3) -> f32;
+
+    fn area(&self) -> f32;
+
+    fn sample<R: Rng>(&self, rng: &mut R) -> (f32, Point3);
 }
 
 impl Intersect for Object {
     fn intersect(&self, ray: &Ray) -> Option<Hit> {
         let obj_ray = &self.transform.inverse() * ray;
 
-        let hit = match self.shape {
-            Shape::Sphere => sphere_intersect(obj_ray),
-            Shape::Plane => plane_intersect(obj_ray),
-            Shape::Triangle => triangle_intersect(obj_ray),
+        let obj_hit = match self.shape {
+            Shape::Sphere => sphere_intersect(&obj_ray),
+            Shape::Plane => plane_intersect(&obj_ray),
+            Shape::Triangle => triangle_intersect(&obj_ray),
+            Shape::Cylinder => cylinder_intersect(&obj_ray),
         };
 
-        if let Some(hit) = &hit {
-            debug_assert!(hit.t >= 0.0);
-        }
+        check_hit(&obj_hit);
+        let world_hit = obj_hit.map(|hit| hit.transform(&self.transform, ray.direction.clone()));
+        check_hit(&world_hit);
 
-        hit.map(|hit| hit.transform(&self.transform, ray.direction.clone()))
+        world_hit
+    }
+
+    fn area_seen_from(&self, from: &Point3) -> f32 {
+        assert_eq!(self.shape, Shape::Sphere);
+
+        let dist = (self.transform.inverse() * from).coords.norm();
+        let delta = 2.0 * (1f32 / dist).asin();
+        return delta * delta / 4.0 / std::f32::consts::PI;
+    }
+
+    fn area(&self) -> f32 {
+        assert_eq!(self.shape, Shape::Sphere);
+
+        return 4.0 * std::f32::consts::PI;
+    }
+
+    fn sample<R: Rng>(&self, rng: &mut R) -> (f32, Point3) {
+        assert_eq!(self.shape, Shape::Sphere);
+
+        let vec = Vec3::from_column_slice(&UnitSphere.sample(rng));
+        //TODO 2.0 is not exactly the correct weight because not exactly half of the sphere is visible
+        (2.0, self.transform * Point3::from(vec))
+    }
+}
+
+fn check_hit(hit: &Option<Hit>) {
+    if let Some(hit) = hit {
+        debug_assert!(hit.t >= 0.0);
+        debug_assert!(hit.normal == hit.normal);
+        debug_assert!(hit.point == hit.point);
     }
 }

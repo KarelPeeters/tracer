@@ -4,10 +4,10 @@ use std::f32::consts::PI;
 use std::time::Instant;
 
 use image::ImageBuffer;
-use nalgebra::{convert, Rotation3, Translation3};
+use nalgebra::{convert, Rotation3, Translation3, UnitQuaternion};
 
 use crate::common::Renderer;
-use crate::common::scene::{Camera, Color, Material, Object, Scene, Shape};
+use crate::common::scene::{Camera, Color, Material, Object, Point3, Scene, Shape, Transform};
 use crate::common::scene::Vec3;
 use crate::cpu::CpuRenderer;
 
@@ -19,9 +19,17 @@ fn color_by_name(name: &str) -> Color {
         .into_linear()
 }
 
+fn camera_transform(eye: &Point3, target: &Point3, up: &Vec3) -> Transform {
+    let translation = Translation3::from(eye.coords);
+    let rotation = UnitQuaternion::look_at_rh(&(target - eye), up);
+    convert(translation * rotation)
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let width = 1920 / 8;
-    let height = 1080 / 8;
+    let div = 4;
+
+    let width = 1920 / div;
+    let height = 1080 / div;
 
     let fov_horizontal: f32 = 100.0;
 
@@ -33,26 +41,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Object {
                 shape: Shape::Plane,
                 material: Material {
-                    albedo: color_by_name("darkred"),
+                    albedo: color_by_name("gray"),
                     emission: black,
                     diffuse: true,
                 },
                 transform: convert(Translation3::new(0.0, -1.0, 0.0) * &vertical),
             },
             Object {
-                shape: Shape::Sphere,
+                shape: Shape::Cylinder,
                 material: Material {
                     albedo: color_by_name("red"),
                     emission: black,
                     diffuse: true,
                 },
-                transform: convert(vertical),
+                transform: convert(Translation3::new(0.0, 0.0, 0.0)),
             },
+            Object {
+                shape: Shape::Sphere,
+                material: Material {
+                    albedo: black,
+                    emission: Color::new(1.0, 1.0, 1.0) * 1000.0,
+                    diffuse: true,
+                },
+                transform: convert(Translation3::new(10.0, 10.0, -5.0)),
+            }
         ],
-        sky_emission: color_by_name("white") * 1.5,
+        sky_emission: color_by_name("darkgray"),
         camera: Camera {
             fov_horizontal: fov_horizontal.to_radians(),
-            transform: convert(Translation3::new(0.0, 0.0, 3.0)),
+            transform: camera_transform(&Point3::new(0.0, 0.0, 3.0), &Point3::new(0.0, 0.0, 0.0), &Vec3::new(0.0, 1.0, 0.0)),
         },
     };
 
