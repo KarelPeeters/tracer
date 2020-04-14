@@ -21,7 +21,7 @@ fn color_by_name(name: &str) -> Color {
 
 fn camera_transform(eye: &Point3, target: &Point3, up: &Vec3) -> Transform {
     let translation = Translation3::from(eye.coords);
-    let rotation = UnitQuaternion::look_at_rh(&(target - eye), up);
+    let rotation = UnitQuaternion::look_at_rh(&(target - eye), up).inverse();
     convert(translation * rotation)
 }
 
