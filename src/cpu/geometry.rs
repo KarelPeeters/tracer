@@ -3,13 +3,12 @@
 use std::fmt::{Debug, Formatter};
 use std::ops::Mul;
 
-use more_asserts::{assert_lt, debug_assert_lt};
 use nalgebra::Unit;
 use rand::distributions::Distribution;
 use rand::Rng;
 use rand_distr::UnitSphere;
 
-use crate::common::scene::{Object, Point3, Shape, Transform, Vec3};
+use crate::common::scene::{BiTransform, Object, Point3, Shape, Transform, Vec3};
 
 pub struct PrettyVec { x: f32, y: f32, z: f32 }
 
@@ -58,8 +57,8 @@ impl Mul<&Ray> for &Transform {
 
     fn mul(self, rhs: &Ray) -> Self::Output {
         Ray {
-            start: self.transform_point(&rhs.start),
-            direction: Unit::new_normalize(self.transform_vector(rhs.direction.as_ref())),
+            start: self * &rhs.start,
+            direction: Unit::new_normalize(self * rhs.direction.as_ref()),
         }
     }
 }
@@ -81,13 +80,13 @@ impl Debug for Hit {
 }
 
 impl Hit {
-    fn transform(&self, transform: &Transform, direction: Unit<Vec3>) -> Hit {
-        let inv_transpose = Transform::from_matrix_unchecked(transform.inverse().into_inner().transpose());
+    fn transform(&self, transform: &BiTransform, direction: Unit<Vec3>) -> Hit {
+        let inv_transpose = Transform::from_matrix_unchecked(transform.inv().into_inner().transpose());
 
         Hit {
-            t: self.t / (transform * direction.as_ref()).norm(),
-            point: transform.transform_point(&self.point),
-            normal: Unit::new_normalize(inv_transpose.transform_vector(&self.normal)),
+            t: self.t / (**transform * &*direction).norm(),
+            point: **transform * &self.point,
+            normal: Unit::new_normalize(inv_transpose * &*self.normal),
         }
     }
 }
@@ -195,7 +194,7 @@ pub trait Intersect {
 
 impl Intersect for Object {
     fn intersect(&self, ray: &Ray) -> Option<Hit> {
-        let obj_ray = &self.transform.inverse() * ray;
+        let obj_ray = &*self.transform.inv() * ray;
 
         let obj_hit = match self.shape {
             Shape::Sphere => sphere_intersect(&obj_ray),
@@ -215,7 +214,8 @@ impl Intersect for Object {
         assert_eq!(self.shape, Shape::Sphere);
 
         let dist = (self.transform.inverse() * from).coords.norm();
-        let delta = 2.0 * (1f32 / dist).asin();
+        let delta = 2.0 * clamp(1.0 / dist, -1.0, 1.0).asin();
+
         return delta * delta / 4.0 / std::f32::consts::PI;
     }
 
@@ -230,7 +230,7 @@ impl Intersect for Object {
 
         let vec = Vec3::from_column_slice(&UnitSphere.sample(rng));
         //TODO 2.0 is not exactly the correct weight because not exactly half of the sphere is visible
-        (2.0, self.transform * Point3::from(vec))
+        (2.0, *self.transform * Point3::from(vec))
     }
 }
 
@@ -240,4 +240,9 @@ fn check_hit(hit: &Option<Hit>) {
         debug_assert!(hit.normal == hit.normal);
         debug_assert!(hit.point == hit.point);
     }
+}
+
+fn clamp(x: f32, min: f32, max: f32) -> f32 {
+    debug_assert!(min <= max);
+    x.min(max).max(min)
 }
