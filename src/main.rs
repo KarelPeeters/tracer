@@ -7,7 +7,7 @@ use image::ImageBuffer;
 use nalgebra::{convert, Rotation3, Translation3, UnitQuaternion, Similarity3};
 
 use crate::common::Renderer;
-use crate::common::scene::{Camera, Color, Material, Object, Point3, Scene, Shape, Transform};
+use crate::common::scene::{Camera, Color, Material, Object, Point3, Scene, Shape, Transform, Medium, MaterialType};
 use crate::common::scene::Vec3;
 use crate::cpu::CpuRenderer;
 
@@ -28,42 +28,65 @@ fn camera_transform(eye: &Point3, target: &Point3, up: &Vec3) -> Transform {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let vertical = Rotation3::new(Vec3::new(PI / 2.0, 0.0, 0.0));
     let black = Color::new(0.0, 0.0, 0.0);
+    let white = Color::new(1.0, 1.0, 1.0);
+
+    let vacuum = Medium {
+        index_of_refraction: 1.0,
+        volumetric_color: white,
+    };
+
+    let glass = Medium {
+        index_of_refraction: 1.52,
+        volumetric_color: Color::new(1.0, 0.1, 0.1),
+    };
 
     let scene = Scene {
         objects: vec![
             Object {
                 shape: Shape::Plane,
                 material: Material {
+                    material_type: MaterialType::Diffuse,
+
                     albedo: color_by_name("gray"),
                     emission: black,
-                    diffuse: true,
+
+                    inside: vacuum,
+                    outside: vacuum,
                 },
                 transform: (Translation3::new(0.0, -1.0, 0.0) * &vertical).into(),
             },
             Object {
-                shape: Shape::Cylinder,
+                shape: Shape::Sphere,
                 material: Material {
-                    albedo: color_by_name("red"),
+                    material_type: MaterialType::Transparent,
+
+                    albedo: white,//color_by_name("red"),
                     emission: black,
-                    diffuse: true,
+
+                    inside: glass,
+                    outside: vacuum,
                 },
                 transform: Translation3::new(0.0, 0.0, 0.0).into(),
             },
             Object {
                 shape: Shape::Sphere,
                 material: Material {
+                    material_type: MaterialType::Diffuse,
                     albedo: black,
                     emission: Color::new(1.0, 1.0, 1.0) * 1000.0,
-                    diffuse: true,
+
+                    inside: vacuum,
+                    outside: vacuum,
                 },
                 transform: Similarity3::from_parts(Translation3::new(10.0, 10.0, -5.0), UnitQuaternion::identity(), 1.0).into(),
             }
         ],
-        // sky_emission: color_by_name("white"),
-        sky_emission: black,
+        sky_emission: white,
         camera: Camera {
             fov_horizontal: 70f32.to_radians(),
-            transform: camera_transform(&Point3::new(0.0, 0.0, 5.0), &Point3::new(0.0, 0.0, 0.0), &Vec3::new(0.0, 1.0, 0.0)),
+            transform: camera_transform(&Point3::new(0.0, 0.3, 5.0), &Point3::new(0.0, 0.0, 0.0), &Vec3::new(0.0, 1.0, 0.0)),
+
+            medium: vacuum,
         },
     };
 
@@ -73,7 +96,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         anti_alias: true,
     };
 
-    let div = 1;
+    let div = 8;
     let width = 1920 / div;
     let height = 1080 / div;
 

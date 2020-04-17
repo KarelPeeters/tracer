@@ -8,7 +8,7 @@ use rand_distr::UnitDisc;
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
 use crate::common::Renderer;
-use crate::common::scene::{Camera, Color, Material, Object, Point3, Scene, Transform, Vec2, Vec3};
+use crate::common::scene::{Camera, Color, Material, Object, Point3, Scene, Transform, Vec2, Vec3, Medium, MaterialType};
 use crate::cpu::geometry::{Hit, Intersect, Ray};
 
 pub struct CpuRenderer {
@@ -31,7 +31,7 @@ impl Renderer for CpuRenderer {
 
                 for _ in 0..self.sample_count {
                     let ray = camera.ray(&mut rng, x, y);
-                    total += trace_ray(scene, &ray, &mut rng, self.max_bounces, true);
+                    total += trace_ray(scene, &ray, &mut rng, self.max_bounces, true, scene.camera.medium);
                 }
 
                 let average = total / (self.sample_count as f32);
@@ -85,19 +85,21 @@ impl RayCamera {
 
 const SHADOW_BIAS: f32 = 0.0001;
 
-fn sample_lights<R: Rng>(scene: &Scene, next_start: Point3, rng: &mut R, hit: &Hit) -> Color {
+fn sample_lights<R: Rng>(scene: &Scene, next_start: &Point3, medium: Medium, rng: &mut R, hit: &Hit) -> Color {
     let mut result = Color::new(0.0, 0.0, 0.0);
 
     for light in &scene.objects {
         if is_black(light.material.emission) { continue; }
 
         let (weight, target) = light.sample(rng);
-        let light_ray = Ray { start: next_start, direction: Unit::new_normalize(target - &next_start) };
+        let light_ray = Ray { start: next_start.clone(), direction: Unit::new_normalize(target - next_start) };
 
         match first_hit(scene, &light_ray) {
-            Some((object, _)) if std::ptr::eq(object, light) => {
+            Some((object, light_hit)) if std::ptr::eq(object, light) => {
                 let abs_cos = light_ray.direction.dot(&hit.normal).abs();
-                result += light.material.emission * weight * abs_cos * light.area_seen_from(&next_start);
+                let volumetric_mask = color_exp(medium.volumetric_color, light_hit.t);
+
+                result += light.material.emission * weight * abs_cos * volumetric_mask * light.area_seen_from(next_start);
             }
             Some(_) => {} //another object is blocking the light
             None => {} //hit nothing
@@ -107,48 +109,94 @@ fn sample_lights<R: Rng>(scene: &Scene, next_start: Point3, rng: &mut R, hit: &H
     result
 }
 
-fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize, spectral: bool) -> Color {
+fn color_exp(base: Color, exp: f32) -> Color {
+    Color::new(base.red.powf(exp), base.green.powf(exp), base.blue.powf(exp))
+}
+
+fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize, spectral: bool, medium: Medium) -> Color {
     if bounces_left == 0 {
         return Color::new(0.0, 0.0, 0.0);
     }
 
-    if let Some((object, mut hit)) = first_hit(scene, ray) {
+    let (t, result) = if let Some((object, mut hit)) = first_hit(scene, ray) {
         let into = hit.normal.dot(&ray.direction) < 0.0;
-        if !into {
+        let next_medium = if into {
+            debug_assert_eq!(medium, object.material.outside);
+            object.material.inside
+        } else {
             hit.normal = -hit.normal;
-        }
-
-        let next_start = hit.point + hit.normal.as_ref() * SHADOW_BIAS;
-        let light_contribution = sample_lights(scene, next_start, rng, &hit);
-
-        let (weight, next_direction) = sample_direction(&ray, &hit, &object.material, rng);
-        let next_ray = Ray {
-            start: next_start,
-            direction: next_direction,
+            debug_assert_eq!(medium, object.material.inside);
+            object.material.outside
         };
-        let next_contribution = trace_ray(scene, &next_ray, rng, bounces_left - 1, false);
-        let external_contribution = object.material.albedo * (light_contribution + next_contribution * weight);
+
+        let mut result = Color::new(0.0, 0.0, 0.0);
 
         if spectral {
-            object.material.emission + external_contribution
-        } else {
-            external_contribution
+            result += object.material.emission;
         }
+
+        let refract_ratio = medium.index_of_refraction / next_medium.index_of_refraction;
+        let (weight, trans, next_spectral,  next_direction) = sample_direction(&ray, &hit, &object.material, refract_ratio, rng);
+        if !next_spectral {
+            let light_start = &hit.point + hit.normal.as_ref() * SHADOW_BIAS;
+            let light_contribution = sample_lights(scene, &light_start, medium, rng, &hit);
+            result += object.material.albedo * light_contribution;
+        }
+
+        let next_ray = Ray {
+            start: &hit.point + *next_direction * SHADOW_BIAS,
+            direction: next_direction,
+        };
+        let next_medium = if trans { next_medium } else { medium };
+        let next_contribution = trace_ray(scene, &next_ray, rng, bounces_left - 1, next_spectral, next_medium);
+
+        result += object.material.albedo * next_contribution * weight;
+
+        (hit.t, result)
     } else {
-        scene.sky_emission
+        (f32::INFINITY, scene.sky_emission)
+    };
+
+    color_exp(medium.volumetric_color, t) * result
+}
+
+fn sample_direction<R: Rng>(ray: &Ray, hit: &Hit, material: &Material, refract_ratio: f32, rng: &mut R) -> (f32, bool, bool, Unit<Vec3>) {
+    match material.material_type {
+        MaterialType::Diffuse => {
+            let disk = Vec2::from_column_slice(&UnitDisc.sample(rng));
+            (0.5, false, false, disk_to_hemisphere(&disk, &hit.normal))
+        },
+        MaterialType::Mirror => {
+            (1.0, false, true, reflect_direction(&ray.direction, &hit.normal))
+        },
+        MaterialType::Transparent => {
+            let (trans, dir) = snells_law(&ray.direction, &hit.normal, refract_ratio);
+            (1.0, trans, true, dir)
+        },
     }
 }
 
-fn sample_direction<R: Rng>(ray: &Ray, hit: &Hit, material: &Material, rng: &mut R) -> (f32, Unit<Vec3>) {
-    if material.diffuse {
-        let disk = Vec2::from_column_slice(&UnitDisc.sample(rng));
-        let z = (1.0 - disk.norm_squared()).sqrt();
-        let x_axis = Unit::new_normalize(Vec3::new(-hit.normal.y, hit.normal.x, 0.0));
-        let y_axis = Unit::new_unchecked(hit.normal.cross(&x_axis));
-        let next_direction = Unit::new_unchecked(*x_axis * disk.x + *y_axis * disk.y + *hit.normal * z);
-        (0.5, next_direction)
+fn disk_to_hemisphere(disk: &Vec2, normal: &Unit<Vec3>) -> Unit<Vec3> {
+    let z = (1.0 - disk.norm_squared()).sqrt();
+    let x_axis = Unit::new_normalize(Vec3::new(-normal.y, normal.x, 0.0));
+    let y_axis = Unit::new_unchecked(normal.cross(&x_axis));
+    Unit::new_unchecked(*x_axis * disk.x + *y_axis * disk.y + **normal * z)
+}
+
+fn reflect_direction(vec: &Unit<Vec3>, normal: &Unit<Vec3>) -> Unit<Vec3> {
+    Unit::new_unchecked(vec.as_ref() - &normal.scale(2.0 * vec.dot(normal)))
+}
+
+fn snells_law(vec: &Unit<Vec3>, normal: &Unit<Vec3>, r: f32) -> (bool, Unit<Vec3>) {
+    let c = normal.dot(vec);
+    let x = 1.0 - r*r*(1.0 - c*c);
+
+    if x > 0.0 {
+        //actual transparency
+        (true, Unit::new_unchecked(**vec * r + **normal * (r *c - x.sqrt())))
     } else {
-        (1.0, reflect_direction(&ray.direction, &hit.normal))
+        //total internal reflection
+        (false, reflect_direction(vec, normal))
     }
 }
 
@@ -158,10 +206,6 @@ fn first_hit<'a>(scene: &'a Scene, ray: &Ray) -> Option<(&'a Object, Hit)> {
         .iter()
         .filter_map(|o| o.intersect(ray).map(|h| (o, h)))
         .min_by(|(_, ah), (_, bh)| ah.t.partial_cmp(&bh.t).expect("t == NaN"))
-}
-
-fn reflect_direction(vec: &Unit<Vec3>, normal: &Unit<Vec3>) -> Unit<Vec3> {
-    Unit::new_unchecked(vec.as_ref() - &normal.scale(2.0 * vec.dot(normal)))
 }
 
 fn is_black(color: Color) -> bool {

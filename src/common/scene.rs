@@ -54,11 +54,26 @@ pub enum Shape {
     Cylinder,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MaterialType {
+    Diffuse, Mirror, Transparent,
+}
+
 #[derive(Copy, Clone, Debug)]
 pub struct Material {
+    pub material_type: MaterialType,
+
     pub emission: Color,
     pub albedo: Color,
-    pub diffuse: bool,
+
+    pub inside: Medium,
+    pub outside: Medium,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct Medium {
+    pub index_of_refraction: f32,
+    pub volumetric_color: Color,
 }
 
 #[derive(Debug)]
@@ -74,6 +89,8 @@ pub struct Object {
 pub struct Camera {
     pub fov_horizontal: f32,
     pub transform: Transform,
+
+    pub medium: Medium,
 }
 
 #[derive(Debug)]
