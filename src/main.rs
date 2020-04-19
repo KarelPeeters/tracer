@@ -1,15 +1,17 @@
 #![allow(dead_code)]
 
 use std::f32::consts::PI;
+use std::fs::read_to_string;
 use std::time::Instant;
 
 use imgref::Img;
-use nalgebra::{convert, Rotation3, Similarity3, Translation3, UnitQuaternion};
+use nalgebra::{convert, Id, Rotation3, Similarity3, Translation3, UnitQuaternion};
+use wavefront_obj::obj;
 
 use crate::common::Renderer;
 use crate::common::scene::{Camera, Color, Material, MaterialType, Medium, Object, Point3, Scene, Shape, Transform};
 use crate::common::scene::Vec3;
-use crate::common::util::to_image;
+use crate::common::util::{obj_to_triangles, to_image};
 use crate::cpu::CpuRenderer;
 
 mod common;
@@ -36,60 +38,72 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         volumetric_color: white,
     };
 
-    let glass = Medium {
+    let medium_glass = Medium {
         index_of_refraction: 1.52,
         volumetric_color: Color::new(1.0, 0.1, 0.1),
     };
 
-    let scene = Scene {
+    let material_floor = Material {
+        material_type: MaterialType::Diffuse,
+
+        albedo: color_by_name("gray"),
+        emission: black,
+
+        inside: vacuum,
+        outside: vacuum,
+    };
+
+    let material_glass = Material {
+        material_type: MaterialType::Transparent,
+
+        albedo: white,//color_by_name("red"),
+        emission: black,
+
+        inside: medium_glass,
+        outside: vacuum,
+    };
+
+    let material_light = Material {
+        material_type: MaterialType::Diffuse,
+        albedo: black,
+        emission: Color::new(1.0, 1.0, 1.0) * 1000.0,
+
+        inside: vacuum,
+        outside: vacuum,
+    };
+
+    let mut scene = Scene {
         objects: vec![
             Object {
                 shape: Shape::Plane,
-                material: Material {
-                    material_type: MaterialType::Diffuse,
-
-                    albedo: color_by_name("gray"),
-                    emission: black,
-
-                    inside: vacuum,
-                    outside: vacuum,
-                },
-                transform: (Translation3::new(0.0, -1.0, 0.0) * &vertical).into(),
+                material: material_floor,
+                transform: (Translation3::new(0.0, 0.0, 0.0) * &vertical).into(),
             },
             Object {
                 shape: Shape::Sphere,
-                material: Material {
-                    material_type: MaterialType::Transparent,
-
-                    albedo: white,//color_by_name("red"),
-                    emission: black,
-
-                    inside: glass,
-                    outside: vacuum,
-                },
-                transform: Translation3::new(0.0, 0.0, 0.0).into(),
+                material: material_glass,
+                transform: Translation3::new(0.0, 1.0, 0.0).into(),
             },
             Object {
                 shape: Shape::Sphere,
-                material: Material {
-                    material_type: MaterialType::Diffuse,
-                    albedo: black,
-                    emission: Color::new(1.0, 1.0, 1.0) * 1000.0,
-
-                    inside: vacuum,
-                    outside: vacuum,
-                },
+                material: material_light,
                 transform: Similarity3::from_parts(Translation3::new(10.0, 10.0, -5.0), UnitQuaternion::identity(), 1.0).into(),
             }
         ],
         sky_emission: white,
         camera: Camera {
             fov_horizontal: 70f32.to_radians(),
-            transform: camera_transform(&Point3::new(0.0, 0.3, 5.0), &Point3::new(0.0, 0.0, 0.0), &Vec3::new(0.0, 1.0, 0.0)),
+            transform: camera_transform(&Point3::new(0.0, 1.3, 5.0), &Point3::new(0.0, 1.0, 0.0), &Vec3::new(0.0, 1.0, 0.0)),
 
             medium: vacuum,
         },
     };
+
+    if false {
+        let objects = obj::parse(read_to_string("ignored/models/cube.obj")?).expect("Error while parsing obj file");
+        let object = objects.objects.first().expect("No object found");
+        scene.objects.extend(obj_to_triangles(object, material_floor, Id::new()));
+    }
 
     let renderer = CpuRenderer {
         sample_count: 100,
