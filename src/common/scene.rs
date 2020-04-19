@@ -56,7 +56,7 @@ pub enum Shape {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum MaterialType {
-    Diffuse, Mirror, Transparent,
+    Fixed, Diffuse, Mirror, Transparent,
 }
 
 #[derive(Copy, Clone, Debug)]

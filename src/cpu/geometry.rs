@@ -84,7 +84,7 @@ impl Hit {
         let inv_transpose = Transform::from_matrix_unchecked(transform.inv().into_inner().transpose());
 
         Hit {
-            t: self.t / (**transform * &*direction).norm(),
+            t: self.t * (**transform * &*direction).norm(),
             point: **transform * &self.point,
             normal: Unit::new_normalize(inv_transpose * &*self.normal),
         }

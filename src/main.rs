@@ -5,7 +5,7 @@ use std::fs::read_to_string;
 use std::time::Instant;
 
 use imgref::Img;
-use nalgebra::{convert, Id, Rotation3, Similarity3, Translation3, UnitQuaternion};
+use nalgebra::{convert, Id, Similarity3, Translation3, UnitQuaternion};
 use wavefront_obj::obj;
 
 use crate::common::Renderer;
@@ -29,7 +29,6 @@ fn camera_transform(eye: &Point3, target: &Point3, up: &Vec3) -> Transform {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let vertical = Rotation3::new(Vec3::new(PI / 2.0, 0.0, 0.0));
     let black = Color::new(0.0, 0.0, 0.0);
     let white = Color::new(1.0, 1.0, 1.0);
 
@@ -77,7 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Object {
                 shape: Shape::Plane,
                 material: material_floor,
-                transform: (Translation3::new(0.0, 0.0, 0.0) * &vertical).into(),
+                transform: Similarity3::from_parts(Translation3::new(0.0, 0.0, 0.0), UnitQuaternion::new(Vec3::new(PI / 2.0, 0.0, 0.0)), 1.0).into(),
             },
             Object {
                 shape: Shape::Sphere,
@@ -112,8 +111,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let div = 8;
-    let width = 1920 / div;
-    let height = 1080 / div;
+    let (width, height) = (1920, 1080);
+    let (width, height) = if div == 0 { (1, 1) } else { (width / div, height / div) };
 
     let mut result = Img::new(vec![black; width * height], width, height);
 

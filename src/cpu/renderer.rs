@@ -116,6 +116,10 @@ fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize,
     }
 
     let (t, result) = if let Some((object, mut hit)) = first_hit(scene, ray) {
+        if object.material.material_type == MaterialType::Fixed {
+            return object.material.albedo;
+        }
+
         let into = hit.normal.dot(&ray.direction) < 0.0;
         let next_medium = if into {
             debug_assert_eq!(medium, object.material.outside);
@@ -159,6 +163,7 @@ fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize,
 
 fn sample_direction<R: Rng>(ray: &Ray, hit: &Hit, material: &Material, refract_ratio: f32, rng: &mut R) -> (f32, bool, bool, Unit<Vec3>) {
     match material.material_type {
+        MaterialType::Fixed => panic!("Can't sample direction for MaterialType::Fixed"),
         MaterialType::Diffuse => {
             let disk = Vec2::from_column_slice(&UnitDisc.sample(rng));
             (0.5, false, false, disk_to_hemisphere(&disk, &hit.normal))
