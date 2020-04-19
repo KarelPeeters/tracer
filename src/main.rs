@@ -3,12 +3,13 @@
 use std::f32::consts::PI;
 use std::time::Instant;
 
-use image::ImageBuffer;
-use nalgebra::{convert, Rotation3, Translation3, UnitQuaternion, Similarity3};
+use imgref::Img;
+use nalgebra::{convert, Rotation3, Similarity3, Translation3, UnitQuaternion};
 
 use crate::common::Renderer;
-use crate::common::scene::{Camera, Color, Material, Object, Point3, Scene, Shape, Transform, Medium, MaterialType};
+use crate::common::scene::{Camera, Color, Material, MaterialType, Medium, Object, Point3, Scene, Shape, Transform};
 use crate::common::scene::Vec3;
+use crate::common::util::to_image;
 use crate::cpu::CpuRenderer;
 
 mod common;
@@ -100,13 +101,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let width = 1920 / div;
     let height = 1080 / div;
 
-    let mut result = ImageBuffer::new(width, height);
+    let mut result = Img::new(vec![black; width * height], width, height);
 
     let start = Instant::now();
-    renderer.render(&scene, &mut result);
+    renderer.render(&scene, result.as_mut());
     println!("Render took {:?}s", (Instant::now() - start).as_secs_f32());
 
-    result.save("ignored/output.png")?;
+    to_image(result.as_ref()).save("ignored/output.png")?;
 
     Ok(())
 }

@@ -1,6 +1,5 @@
 use std::f32;
 
-use image::ImageBuffer;
 use nalgebra::Unit;
 use rand::{Rng, thread_rng};
 use rand::distributions::Distribution;
@@ -10,6 +9,7 @@ use rayon::iter::{ParallelBridge, ParallelIterator};
 use crate::common::Renderer;
 use crate::common::scene::{Camera, Color, Material, Object, Point3, Scene, Transform, Vec2, Vec3, Medium, MaterialType};
 use crate::cpu::geometry::{Hit, Intersect, Ray};
+use imgref::{ImgRefMut};
 
 pub struct CpuRenderer {
     pub sample_count: usize,
@@ -18,15 +18,15 @@ pub struct CpuRenderer {
 }
 
 impl Renderer for CpuRenderer {
-    fn render(&self, scene: &Scene, target: &mut ImageBuffer<image::Rgb<u8>, Vec<u8>>) {
+    fn render(&self, scene: &Scene, mut target: ImgRefMut<Color>) {
         let camera =
             RayCamera::new(&scene.camera, self.anti_alias, target.width(), target.height());
 
-        target.enumerate_rows_mut().par_bridge().for_each(|(y, row)| {
+        target.rows_mut().enumerate().par_bridge().for_each(|(y,row)| {
             println!("y={}", y);
             let mut rng = thread_rng();
 
-            for (x, y, p) in row {
+            row.iter_mut().enumerate().for_each(|(x, p)| {
                 let mut total = Color::new(0.0, 0.0, 0.0);
 
                 for _ in 0..self.sample_count {
@@ -35,11 +35,8 @@ impl Renderer for CpuRenderer {
                 }
 
                 let average = total / (self.sample_count as f32);
-
-                let srgb = palette::Srgb::from_linear(average);
-                let data = srgb.into_format();
-                *p = image::Rgb([data.red, data.green, data.blue]);
-            }
+                *p = average;
+            });
         });
     }
 }
@@ -54,7 +51,7 @@ struct RayCamera {
 }
 
 impl RayCamera {
-    fn new(camera: &Camera, anti_alias: bool, width: u32, height: u32) -> RayCamera {
+    fn new(camera: &Camera, anti_alias: bool, width: usize, height: usize) -> RayCamera {
         let x_span = 2.0 * (camera.fov_horizontal / 2.0).tan();
         RayCamera {
             x_span,
@@ -66,7 +63,7 @@ impl RayCamera {
         }
     }
 
-    fn ray<R: Rng>(&self, rng: &mut R, x: u32, y: u32) -> Ray {
+    fn ray<R: Rng>(&self, rng: &mut R, x: usize, y: usize) -> Ray {
         let (dx, dy) = if self.anti_alias {
             rng.gen()
         } else {

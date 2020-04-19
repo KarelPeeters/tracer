@@ -1,9 +1,10 @@
-use image::ImageBuffer;
+use imgref::ImgRefMut;
 
-use crate::common::scene::Scene;
+use crate::common::scene::{Color, Scene};
 
 pub mod scene;
+pub mod util;
 
 pub trait Renderer {
-    fn render(&self, scene: &Scene, target: &mut ImageBuffer<image::Rgb<u8>, Vec<u8>>);
+    fn render(&self, scene: &Scene, target: ImgRefMut<Color>);
 }

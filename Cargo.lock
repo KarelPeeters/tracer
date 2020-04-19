@@ -201,6 +201,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "imgref"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5aa18eb070bbea81d409ddebd55e2bcb8c2931ade125bad36d4fe8da115ca82b"
+
+[[package]]
 name = "inflate"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -674,6 +680,7 @@ version = "0.1.0"
 dependencies = [
  "alga",
  "image",
+ "imgref",
  "itertools",
  "nalgebra",
  "palette",

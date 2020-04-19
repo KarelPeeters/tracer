@@ -17,6 +17,7 @@ itertools = "0.8.2"
 rand_xorshift = "0.2.0"
 wavefront_obj = "7.0.0"
 alga = "0.9.3"
+imgref = "1.4.1"
 
 #vulkano = "0.17"
 #vulkano-shaders = "0.17"
