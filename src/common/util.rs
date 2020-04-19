@@ -1,23 +1,38 @@
+use alga::general::SubsetOf;
 use image::ImageBuffer;
 use imgref::ImgRef;
-use nalgebra::{Matrix4};
+use nalgebra::Matrix4;
 use wavefront_obj::obj;
 use wavefront_obj::obj::Primitive;
 
 use crate::common::scene::{Color, Material, Object, Point3, Shape, Transform};
-use alga::general::SubsetOf;
 
-pub fn to_image(image: ImgRef<Color>) -> ImageBuffer<image::Rgb<u8>, Vec<u8>> {
-    let mut result: ImageBuffer::<image::Rgb<u8>, Vec<u8>> = ImageBuffer::new(image.width() as u32, image.height() as u32);
+type Image = ImageBuffer<image::Rgb<u8>, Vec<u8>>;
+
+/// Convert the given image to a format suitable for saving to a file.
+/// The first return Image is the image itself, the second Image shows where values had to be clipped
+/// to fit into the image format .
+pub fn to_image(image: ImgRef<Color>) -> (Image, Image) {
+    let mut result: Image = ImageBuffer::new(image.width() as u32, image.height() as u32);
+    let mut clipped: Image = ImageBuffer::new(image.width() as u32, image.height() as u32);
+
+    let max = palette::Srgb::new(1.0, 1.0, 1.0).into_linear();
 
     for (x, y, p) in result.enumerate_pixels_mut() {
         let linear: Color = image[(x, y)];
+
         let srgb = palette::Srgb::from_linear(linear);
         let data = srgb.into_format();
+
         *p = image::Rgb([data.red, data.green, data.blue]);
+        clipped[(x, y)] = image::Rgb([
+            if linear.red > max.red { 255 } else { 0 },
+            if linear.green > max.green { 255 } else { 0 },
+            if linear.blue > max.blue { 255 } else { 0 },
+        ]);
     }
 
-    return result;
+    return (result, clipped);
 }
 
 fn vertex_to_point(vertex: &obj::Vertex) -> Point3 {

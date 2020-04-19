@@ -120,7 +120,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     renderer.render(&scene, result.as_mut());
     println!("Render took {:?}s", (Instant::now() - start).as_secs_f32());
 
-    to_image(result.as_ref()).save("ignored/output.png")?;
+    let (result, clipped) = to_image(result.as_ref());
+    result.save("ignored/output.png")?;
+    clipped.save("ignored/output_clipped.png")?;
 
     Ok(())
 }
