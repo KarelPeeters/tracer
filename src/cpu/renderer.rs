@@ -106,10 +106,6 @@ fn sample_lights<R: Rng>(scene: &Scene, next_start: Point3, medium: Medium, rng:
     result
 }
 
-fn color_exp(base: Color, exp: f32) -> Color {
-    Color::new(base.red.powf(exp), base.green.powf(exp), base.blue.powf(exp))
-}
-
 fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize, spectral: bool, medium: Medium) -> Color {
     if bounces_left == 0 {
         return Color::new(0.0, 0.0, 0.0);
@@ -216,4 +212,25 @@ fn first_hit<'a>(scene: &'a Scene, ray: &Ray) -> Option<(&'a Object, Hit)> {
 
 fn is_black(color: Color) -> bool {
     return color == Color::new(0.0, 0.0, 0.0);
+}
+
+fn color_exp(base: Color, exp: f32) -> Color {
+    Color::new(fast_powf(base.red, exp), fast_powf(base.green, exp), fast_powf(base.blue, exp))
+}
+
+fn fast_powf(base: f32, exp: f32) -> f32 {
+    debug_assert!(base >= 0.0);
+    debug_assert!(!(base == 0.0 && exp == 0.0));
+
+    if base == 0.0 || base == 1.0 || exp == 1.0 {
+        base
+    } else if exp.is_infinite() {
+        if (base > 1.0) ^ (exp < 0.0)  {
+            f32::INFINITY
+        } else {
+            0.0
+        }
+    } else {
+        base.powf(exp)
+    }
 }
