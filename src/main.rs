@@ -5,12 +5,11 @@ use std::fs::read_to_string;
 use std::time::Instant;
 
 use imgref::Img;
-use nalgebra::{convert, Id, Similarity3, Translation3, UnitQuaternion};
 use wavefront_obj::obj;
 
+use crate::common::math::{Norm, Point3, Transform, Vec3};
 use crate::common::Renderer;
-use crate::common::scene::{Camera, Color, Material, MaterialType, Medium, Object, Point3, Scene, Shape, Transform};
-use crate::common::scene::Vec3;
+use crate::common::scene::{Camera, Color, Material, MaterialType, Medium, Object, Scene, Shape};
 use crate::common::util::{obj_to_triangles, to_image};
 use crate::cpu::CpuRenderer;
 
@@ -20,12 +19,6 @@ mod cpu;
 fn color_by_name(name: &str) -> Color {
     palette::Srgb::from_format(palette::named::from_str(name).expect("Invalid color name"))
         .into_linear()
-}
-
-fn camera_transform(eye: &Point3, target: &Point3, up: &Vec3) -> Transform {
-    let translation = Translation3::from(eye.coords);
-    let rotation = UnitQuaternion::look_at_rh(&(target - eye), up).inverse();
-    convert(translation * rotation)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -76,23 +69,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Object {
                 shape: Shape::Plane,
                 material: material_floor,
-                transform: Similarity3::from_parts(Translation3::new(0.0, 0.0, 0.0), UnitQuaternion::new(Vec3::new(PI / 2.0, 0.0, 0.0)), 1.0).into(),
+                transform: Transform::rotation(Vec3::x_axis(), PI / 2.0),
             },
             Object {
                 shape: Shape::Sphere,
                 material: material_glass,
-                transform: Translation3::new(0.0, 1.0, 0.0).into(),
+                transform: Transform::translation(Vec3::new(0.0, 1.0, 0.0)),
             },
             Object {
                 shape: Shape::Sphere,
                 material: material_light,
-                transform: Similarity3::from_parts(Translation3::new(10.0, 10.0, -5.0), UnitQuaternion::identity(), 1.0).into(),
+                transform: Transform::translation(Vec3::new(10.0, 10.0, -5.0)),
             }
         ],
         sky_emission: white,
         camera: Camera {
             fov_horizontal: 70f32.to_radians(),
-            transform: camera_transform(&Point3::new(0.0, 1.3, 5.0), &Point3::new(0.0, 1.0, 0.0), &Vec3::new(0.0, 1.0, 0.0)),
+            transform: Transform::look_at(Point3::new(0.0, 1.5, 5.0), Point3::new(0.0, 1.0, 0.0), Vec3::new(0.0, 1.0, 0.0).normalized()),
 
             medium: vacuum,
         },
@@ -101,7 +94,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if false {
         let objects = obj::parse(read_to_string("ignored/models/cube.obj")?).expect("Error while parsing obj file");
         let object = objects.objects.first().expect("No object found");
-        scene.objects.extend(obj_to_triangles(object, material_floor, Id::new()));
+        scene.objects.extend(obj_to_triangles(object, material_floor, Default::default()).skip(2).take(1));
     }
 
     let renderer = CpuRenderer {

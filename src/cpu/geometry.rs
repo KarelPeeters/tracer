@@ -1,99 +1,62 @@
 #![allow(dead_code)]
 
-use std::fmt::{Debug, Formatter};
+use std::fmt::Debug;
 use std::ops::Mul;
 
-use nalgebra::Unit;
 use rand::distributions::Distribution;
 use rand::Rng;
 use rand_distr::UnitSphere;
 
-use crate::common::scene::{BiTransform, Object, Point3, Shape, Transform, Vec3};
+use crate::common::math::{Norm, Point2, Point3, Transform, Unit, Vec2, Vec3};
+use crate::common::scene::{Object, Shape};
 
-pub struct PrettyVec { x: f32, y: f32, z: f32 }
-
-impl PrettyVec {
-    pub fn from_vec(v: &Vec3) -> PrettyVec { PrettyVec { x: v.x, y: v.y, z: v.z } }
-    pub fn from_point(v: &Point3) -> PrettyVec { PrettyVec { x: v.x, y: v.y, z: v.z } }
-    pub fn from_unit(v: &Unit<Vec3>) -> PrettyVec { PrettyVec { x: v.x, y: v.y, z: v.z } }
-}
-
-impl Debug for PrettyVec {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({}, {}, {})", self.x, self.y, self.z)
-    }
-}
-
-#[derive(Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Ray {
     pub start: Point3,
     pub direction: Unit<Vec3>,
 }
 
-impl Debug for Ray {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Ray")
-            .field("start", &PrettyVec::from_point(&self.start))
-            .field("direction", &PrettyVec::from_unit(&self.direction))
-            .finish()
-    }
-}
-
 impl Ray {
-    pub fn new(start: &Point3, direction: &Unit<Vec3>) -> Ray {
-        Ray {
-            start: start.clone(),
-            direction: (*direction).clone(),
-        }
+    pub fn new(start: Point3, direction: Unit<Vec3>) -> Ray {
+        Ray { start, direction }
     }
 
     pub fn at(&self, t: f32) -> Point3 {
-        &self.start + self.direction.scale(t)
+        self.start + *self.direction * t
     }
 }
 
-impl Mul<&Ray> for &Transform {
+impl Mul<&Ray> for Transform {
     type Output = Ray;
 
     fn mul(self, rhs: &Ray) -> Self::Output {
         Ray {
-            start: self * &rhs.start,
-            direction: Unit::new_normalize(self * rhs.direction.as_ref()),
+            start: self * rhs.start,
+            direction: (self * *rhs.direction).normalized(),
         }
     }
 }
 
+#[derive(Debug)]
 pub struct Hit {
     pub t: f32,
     pub point: Point3,
     pub normal: Unit<Vec3>,
 }
 
-impl Debug for Hit {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Hit")
-            .field("t", &self.t)
-            .field("point", &PrettyVec::from_point(&self.point))
-            .field("normal", &PrettyVec::from_unit(&self.normal))
-            .finish()
-    }
-}
-
 impl Hit {
-    fn transform(&self, transform: &BiTransform, direction: Unit<Vec3>) -> Hit {
-        let inv_transpose = Transform::from_matrix_unchecked(transform.inv().into_inner().transpose());
-
+    fn transform(&self, transform: Transform, direction: Unit<Vec3>) -> Hit {
         Hit {
-            t: self.t * (**transform * &*direction).norm(),
-            point: **transform * &self.point,
-            normal: Unit::new_normalize(inv_transpose * &*self.normal),
+            t: self.t * (transform * (*direction)).norm(),
+            point: transform * self.point,
+            normal: transform.inv_transpose_mul(*self.normal).normalized(),
         }
     }
 }
 
 fn sphere_intersect(ray: &Ray) -> Option<Hit> {
-    let b: f32 = ray.start.coords.dot(&ray.direction);
-    let c: f32 = ray.start.coords.norm_squared() - 1.0;
+    let b: f32 = ray.start.coords().dot(*ray.direction);
+    let c: f32 = ray.start.coords().norm_squared() - 1.0;
 
     let d = b * b - c;
     if d < 0.0 || (c > 0.0 && b > 0.0) {
@@ -109,17 +72,13 @@ fn sphere_intersect(ray: &Ray) -> Option<Hit> {
         t_far
     };
 
-    let mut point = ray.at(t);
-    point.coords.normalize_mut(); //renormalize for better accuracy
-
-    if point != point {
-        return None;
-    }
+    //renormalize for better accuracy and bail if zero
+    let result = ray.at(t).coords().try_normalized()?;
 
     Some(Hit {
         t,
-        point: point.clone(),
-        normal: Unit::new_unchecked(point.coords),
+        point: Point3::from_coords(*result),
+        normal: result,
     })
 }
 
@@ -147,10 +106,10 @@ fn triangle_intersect(ray: &Ray) -> Option<Hit> {
 
 fn cylinder_intersect(ray: &Ray) -> Option<Hit> {
     //work in xz plane
-    let start = ray.start.xz();
-    let (direction, dir_2d_norm) = Unit::new_and_get(ray.direction.xz());
+    let start = Point2::new(ray.start.x, ray.start.z);
+    let (direction, dir_2d_norm) = Vec2::new(ray.direction.x, ray.direction.z).normalized_and_get();
 
-    let b: f32 = start.coords.dot(&direction);
+    let b: f32 = start.coords.dot(*direction);
     let c: f32 = start.coords.norm_squared() - 1.0;
 
     let d = b * b - c;
@@ -171,7 +130,7 @@ fn cylinder_intersect(ray: &Ray) -> Option<Hit> {
     let t = t / dir_2d_norm;
 
     let mut point = ray.at(t);
-    let normal = Unit::new_normalize(Vec3::new(point.x, 0.0, point.z));
+    let normal = Vec3::new(point.x, 0.0, point.z).normalized();
     point.x = normal.x; //renormalize point for better accuracy
     point.z = normal.z;
 
@@ -185,7 +144,7 @@ fn cylinder_intersect(ray: &Ray) -> Option<Hit> {
 pub trait Intersect {
     fn intersect(&self, ray: &Ray) -> Option<Hit>;
 
-    fn area_seen_from(&self, from: &Point3) -> f32;
+    fn area_seen_from(&self, from: Point3) -> f32;
 
     fn area(&self) -> f32;
 
@@ -194,7 +153,7 @@ pub trait Intersect {
 
 impl Intersect for Object {
     fn intersect(&self, ray: &Ray) -> Option<Hit> {
-        let obj_ray = &*self.transform.inv() * ray;
+        let obj_ray = self.transform.inv() * ray;
 
         let obj_hit = match self.shape {
             Shape::Sphere => sphere_intersect(&obj_ray),
@@ -204,16 +163,16 @@ impl Intersect for Object {
         };
 
         check_hit(&obj_hit);
-        let world_hit = obj_hit.map(|hit| hit.transform(&self.transform, ray.direction.clone()));
+        let world_hit = obj_hit.map(|hit| hit.transform(self.transform, ray.direction));
         check_hit(&world_hit);
 
         world_hit
     }
 
-    fn area_seen_from(&self, from: &Point3) -> f32 {
+    fn area_seen_from(&self, from: Point3) -> f32 {
         assert_eq!(self.shape, Shape::Sphere);
 
-        let dist = (self.transform.inverse() * from).coords.norm();
+        let dist = (self.transform.inv() * from).distance_to(Point3::origin());
         let delta = 2.0 * clamp(1.0 / dist, -1.0, 1.0).asin();
 
         return delta * delta / 4.0 / std::f32::consts::PI;
@@ -228,9 +187,9 @@ impl Intersect for Object {
     fn sample<R: Rng>(&self, rng: &mut R) -> (f32, Point3) {
         assert_eq!(self.shape, Shape::Sphere);
 
-        let vec = Vec3::from_column_slice(&UnitSphere.sample(rng));
+        let vec = Vec3::from_slice(&UnitSphere.sample(rng));
         //TODO 2.0 is not exactly the correct weight because not exactly half of the sphere is visible
-        (2.0, *self.transform * Point3::from(vec))
+        (2.0, self.transform * (Point3::origin() + vec))
     }
 }
 
