@@ -4,6 +4,7 @@ use imgref::ImgRefMut;
 use rand::{Rng, thread_rng};
 use rand::distributions::Distribution;
 use rand_distr::UnitDisc;
+use rayon::{ThreadBuilder, ThreadPoolBuilder};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
 use crate::common::math::{Norm, Point3, Transform, Unit, Vec2, Vec3};
@@ -21,6 +22,8 @@ impl Renderer for CpuRenderer {
     fn render(&self, scene: &Scene, mut target: ImgRefMut<Color>) {
         let camera =
             RayCamera::new(&scene.camera, self.anti_alias, target.width(), target.height());
+
+        ThreadPoolBuilder::new().num_threads(8).build_global().expect("Failed to build global thread pool");
 
         target.rows_mut().enumerate().par_bridge().for_each(|(y, row)| {
             println!("y={}", y);
@@ -203,11 +206,28 @@ fn snells_law(vec: Unit<Vec3>, normal: Unit<Vec3>, r: f32) -> (bool, Unit<Vec3>)
 }
 
 fn first_hit<'a>(scene: &'a Scene, ray: &Ray) -> Option<(&'a Object, Hit)> {
-    scene
-        .objects
-        .iter()
-        .filter_map(|o| o.intersect(ray).map(|h| (o, h)))
-        .min_by(|(_, ah), (_, bh)| ah.t.partial_cmp(&bh.t).expect("t == NaN"))
+    //this function used to be implemented with iterators but that was a bit slower
+    let mut closest_hit = Hit {
+        t: f32::INFINITY,
+        point: Default::default(),
+        normal: Vec3::z_axis(),
+    };
+    let mut closest_object = scene.objects.first()?;
+
+    for object in &scene.objects {
+        if let Some(hit) = object.intersect(ray) {
+            if hit.t < closest_hit.t {
+                closest_hit = hit;
+                closest_object = object;
+            }
+        }
+    }
+
+    if closest_hit.t == f32::INFINITY {
+        None
+    } else {
+        Some((closest_object, closest_hit))
+    }
 }
 
 fn is_black(color: Color) -> bool {
@@ -225,7 +245,7 @@ fn fast_powf(base: f32, exp: f32) -> f32 {
     if base == 0.0 || base == 1.0 || exp == 1.0 {
         base
     } else if exp.is_infinite() {
-        if (base > 1.0) ^ (exp < 0.0)  {
+        if (base > 1.0) ^ (exp < 0.0) {
             f32::INFINITY
         } else {
             0.0
