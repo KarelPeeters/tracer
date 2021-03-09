@@ -1,11 +1,12 @@
 use std::f32;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use imgref::ImgRefMut;
 use rand::{Rng, thread_rng};
 use rand::distributions::Distribution;
-use rand_distr::{UnitDisc};
-use rayon::{ThreadPoolBuilder};
-use rayon::iter::{ParallelBridge, ParallelIterator};
+use rand_distr::UnitDisc;
+use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
+use rayon::ThreadPoolBuilder;
 
 use crate::common::math::{Norm, Point3, Transform, Unit, Vec2, Vec3};
 use crate::common::Renderer;
@@ -25,16 +26,23 @@ impl Renderer for CpuRenderer {
 
         ThreadPoolBuilder::new().num_threads(8).build_global().expect("Failed to build global thread pool");
 
-        target.rows_mut().enumerate().par_bridge().for_each(|(y, row)| {
-            println!("y={}", y);
-            let mut rng = thread_rng();
+        let progress = AtomicUsize::default();
+        let height = target.height();
+
+        let mut rows: Vec<_> = target.rows_mut().enumerate().collect();
+        rows.par_iter_mut().for_each_init(|| thread_rng(), |rng, (y, row)| {
+            let progress = progress.fetch_add(1, Ordering::Relaxed);
+
+            if progress % (height / 10) == 0 {
+                println!("Progress {:.2}", progress as f32 / height as f32)
+            }
 
             row.iter_mut().enumerate().for_each(|(x, p)| {
                 let mut total = Color::new(0.0, 0.0, 0.0);
 
                 for _ in 0..self.sample_count {
-                    let ray = camera.ray(&mut rng, x, y);
-                    total += trace_ray(scene, &ray, &mut rng, self.max_bounces, true, scene.camera.medium);
+                    let ray = camera.ray(rng, x, *y);
+                    total += trace_ray(scene, &ray, rng, self.max_bounces, true, scene.camera.medium);
                 }
 
                 let average = total / (self.sample_count as f32);
