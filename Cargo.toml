@@ -19,6 +19,7 @@ wavefront_obj = "9.0.0"
 #alga = "0.9.3"
 imgref = "1.7.1"
 lazy_static = "1.4.0"
+exr = "1.1.0"
 
 #vulkano = "0.17"
 #vulkano-shaders = "0.17"
@@ -28,4 +29,4 @@ opt-level = 2
 
 [profile.release]
 codegen-units = 1
-debug=true
+debug = true

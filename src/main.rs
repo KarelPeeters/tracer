@@ -33,6 +33,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     renderer.render(&scene, result.as_mut());
     println!("Render took {:?}s", (Instant::now() - start).as_secs_f32());
 
+    exr::prelude::write_rgb_file("ignored/output.exr", width, height, |x, y| {
+        let color = result[(x, y)];
+        (color.red, color.green, color.blue)
+    }).expect("Failed to save exf image");
+
     let (result, clipped) = to_image(result.as_ref());
     result.save("ignored/output.png")?;
     clipped.save("ignored/output_clipped.png")?;
