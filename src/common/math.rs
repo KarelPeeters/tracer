@@ -511,3 +511,23 @@ impl Mul<Point3> for Transform {
         Point3::new(x, y, z)
     }
 }
+
+pub struct Angle {
+    pub radians: f32,
+}
+
+impl Angle {
+    pub fn radians(radians: f32) -> Angle {
+        Angle { radians }
+    }
+
+    pub fn degrees(degrees: f32) -> Angle {
+        Angle::radians(degrees.to_radians())
+    }
+}
+
+impl Debug for Angle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Angle({} = {}°)", self.radians, self.radians.to_degrees())
+    }
+}

@@ -3,13 +3,13 @@ use std::f32;
 use imgref::ImgRefMut;
 use rand::{Rng, thread_rng};
 use rand::distributions::Distribution;
-use rand_distr::UnitDisc;
-use rayon::{ThreadBuilder, ThreadPoolBuilder};
+use rand_distr::{UnitDisc};
+use rayon::{ThreadPoolBuilder};
 use rayon::iter::{ParallelBridge, ParallelIterator};
 
 use crate::common::math::{Norm, Point3, Transform, Unit, Vec2, Vec3};
 use crate::common::Renderer;
-use crate::common::scene::{Camera, Color, Material, MaterialType, Medium, Object, Scene};
+use crate::common::scene::{Camera, Color, MaterialType, Medium, Object, Scene};
 use crate::cpu::geometry::{Hit, Intersect, Ray};
 
 pub struct CpuRenderer {
@@ -55,7 +55,7 @@ struct RayCamera {
 
 impl RayCamera {
     fn new(camera: &Camera, anti_alias: bool, width: usize, height: usize) -> RayCamera {
-        let x_span = 2.0 * (camera.fov_horizontal / 2.0).tan();
+        let x_span = 2.0 * (camera.fov_horizontal.radians / 2.0).tan();
         RayCamera {
             x_span,
             y_span: x_span * (height as f32) / (width as f32),
@@ -115,7 +115,7 @@ fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize,
     }
 
     let (t, result) = if let Some((object, mut hit)) = first_hit(scene, ray) {
-        if object.material.material_type == MaterialType::Fixed {
+        if let MaterialType::Fixed = object.material.material_type {
             return object.material.albedo;
         }
 
@@ -136,7 +136,7 @@ fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize,
         }
 
         let refract_ratio = medium.index_of_refraction / next_medium.index_of_refraction;
-        let (weight, trans, next_spectral, next_direction) = sample_direction(&ray, &hit, &object.material, refract_ratio, rng);
+        let (weight, trans, next_spectral, next_direction) = sample_direction(&ray, &hit, object.material.material_type, refract_ratio, rng);
         if !next_spectral {
             let light_start = hit.point + (*hit.normal * SHADOW_BIAS);
             let light_contribution = sample_lights(scene, light_start, medium, rng, &hit);
@@ -160,8 +160,8 @@ fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize,
     color_exp(medium.volumetric_color, t) * result
 }
 
-fn sample_direction<R: Rng>(ray: &Ray, hit: &Hit, material: &Material, refract_ratio: f32, rng: &mut R) -> (f32, bool, bool, Unit<Vec3>) {
-    match material.material_type {
+fn sample_direction<R: Rng>(ray: &Ray, hit: &Hit, material_type: MaterialType, refract_ratio: f32, rng: &mut R) -> (f32, bool, bool, Unit<Vec3>) {
+    match material_type {
         MaterialType::Fixed => panic!("Can't sample direction for MaterialType::Fixed"),
         MaterialType::Diffuse => {
             let disk = Vec2::from_slice(&UnitDisc.sample(rng));
@@ -173,6 +173,13 @@ fn sample_direction<R: Rng>(ray: &Ray, hit: &Hit, material: &Material, refract_r
         MaterialType::Transparent => {
             let (trans, dir) = snells_law(ray.direction, hit.normal, refract_ratio);
             (1.0, trans, true, dir)
+        }
+        MaterialType::DiffuseMirror(f) => {
+            if rng.gen::<f32>() < f {
+                sample_direction(ray, hit, MaterialType::Diffuse, refract_ratio, rng)
+            } else {
+                sample_direction(ray, hit, MaterialType::Mirror, refract_ratio, rng)
+            }
         }
     }
 }

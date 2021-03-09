@@ -1,4 +1,4 @@
-use crate::common::math::Transform;
+use crate::common::math::{Transform, Angle};
 
 pub type Color = palette::LinSrgb;
 
@@ -14,12 +14,15 @@ pub enum Shape {
     Cylinder,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug)]
 pub enum MaterialType {
     Fixed,
     Diffuse,
     Mirror,
     Transparent,
+    // f is the fraction of light that's diffuse, 0 <= f <= 1
+    //TODO maybe just remove Diffuse and Mirror and make a single Opque material? or even just have a single material
+    DiffuseMirror(f32),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -50,7 +53,7 @@ pub struct Object {
 #[derive(Debug)]
 /// Perspective camera at origin with X to the right and Y upwards looking towards negative Z
 pub struct Camera {
-    pub fov_horizontal: f32,
+    pub fov_horizontal: Angle,
     pub transform: Transform,
 
     pub medium: Medium,
