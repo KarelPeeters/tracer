@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use imgref::ImgRefMut;
 use rand::{Rng, thread_rng};
 use rand::distributions::Distribution;
+use rand::seq::SliceRandom;
 use rand_distr::UnitDisc;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use rayon::ThreadPoolBuilder;
@@ -26,15 +27,18 @@ impl Renderer for CpuRenderer {
 
         ThreadPoolBuilder::new().num_threads(8).build_global().expect("Failed to build global thread pool");
 
-        let progress = AtomicUsize::default();
+        let progress_rows_done = AtomicUsize::default();
         let height = target.height();
+        let progress_div = if height > 1000 { height / 1000 } else { 1 };
 
         let mut rows: Vec<_> = target.rows_mut().enumerate().collect();
-        rows.par_iter_mut().for_each_init(|| thread_rng(), |rng, (y, row)| {
-            let progress = progress.fetch_add(1, Ordering::Relaxed);
+        rows.shuffle(&mut thread_rng());
 
-            if progress % (height / 10) == 0 {
-                println!("Progress {:.2}", progress as f32 / height as f32)
+        rows.par_iter_mut().for_each_init(|| thread_rng(), |rng, (y, row)| {
+            let progress = progress_rows_done.fetch_add(1, Ordering::Relaxed);
+
+            if progress % progress_div == 0 {
+                println!("Progress {:.3}", progress as f32 / height as f32)
             }
 
             row.iter_mut().enumerate().for_each(|(x, p)| {
