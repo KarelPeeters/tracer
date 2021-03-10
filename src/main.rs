@@ -1,6 +1,9 @@
 #![allow(dead_code)]
 
 
+use std::{fs, io};
+use std::cmp::max;
+use std::path::PathBuf;
 use std::time::Instant;
 
 use imgref::Img;
@@ -33,14 +36,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     renderer.render(&scene, result.as_mut());
     println!("Render took {:?}s", (Instant::now() - start).as_secs_f32());
 
-    exr::prelude::write_rgb_file("ignored/output.exr", width, height, |x, y| {
-        let color = result[(x, y)];
-        (color.red, color.green, color.blue)
-    }).expect("Failed to save exf image");
+    let (result_clipped, _) = to_image(result.as_ref());
+    let output_paths = [PathBuf::from("ignored/output"), pick_output_file_path()?];
 
-    let (result, clipped) = to_image(result.as_ref());
-    result.save("ignored/output.png")?;
-    clipped.save("ignored/output_clipped.png")?;
+    for output_path in output_paths.iter() {
+        println!("Saving output to {:?}", output_path);
+
+        fs::write(output_path.with_extension("txt"), &format!("{:#?}", renderer).as_bytes())?;
+
+        exr::prelude::write_rgb_file(output_path.with_extension("exr"), width, height, |x, y| {
+            let color = result[(x, y)];
+            (color.red, color.green, color.blue)
+        }).expect("Failed to save exf image");
+
+        result_clipped.save(output_path.with_extension("png"))?;
+    }
 
     Ok(())
+}
+
+
+fn pick_output_file_path() -> io::Result<PathBuf> {
+    fs::create_dir_all("ignored/output")?;
+
+    let max_int: io::Result<u32> = fs::read_dir("ignored/output")?.try_fold(0, |a, entry| {
+        let entry = entry?;
+
+        let x = entry.path().file_stem().unwrap_or_default()
+            .to_string_lossy()
+            .parse::<u32>().unwrap_or(0);
+        Ok(max(a, x))
+    });
+
+    let next_int = max_int? + 1;
+    let path = ["ignored", "output", &next_int.to_string()].iter().collect();
+    Ok(path)
 }

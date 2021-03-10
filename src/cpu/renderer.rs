@@ -14,6 +14,7 @@ use crate::common::Renderer;
 use crate::common::scene::{Camera, Color, MaterialType, Medium, Object, Scene};
 use crate::cpu::geometry::{Hit, Intersect, Ray};
 
+#[derive(Debug)]
 pub struct CpuRenderer {
     pub sample_count: usize,
     pub max_bounces: usize,
