@@ -130,7 +130,15 @@ fn sample_lights<R: Rng>(scene: &Scene, next_start: Point3, medium: Medium, rng:
     result
 }
 
-fn trace_ray<R: Rng>(scene: &Scene, strategy: Strategy, ray: &Ray, rng: &mut R, bounces_left: usize, spectral: bool, medium: Medium) -> Color {
+fn trace_ray<R: Rng>(
+    scene: &Scene,
+    strategy: Strategy,
+    ray: &Ray,
+    rng: &mut R,
+    bounces_left: usize,
+    specular: bool,
+    medium: Medium
+) -> Color {
     if bounces_left == 0 {
         return Color::new(0.0, 0.0, 0.0);
     }
@@ -140,6 +148,7 @@ fn trace_ray<R: Rng>(scene: &Scene, strategy: Strategy, ray: &Ray, rng: &mut R, 
             return object.material.albedo;
         }
 
+        // figure out the next medium
         let into = hit.normal.dot(*ray.direction) < 0.0;
         let next_medium = if into {
             debug_assert_eq!(medium, object.material.outside);
@@ -150,36 +159,39 @@ fn trace_ray<R: Rng>(scene: &Scene, strategy: Strategy, ray: &Ray, rng: &mut R, 
             object.material.outside
         };
 
+        // sample the next ray
         let refract_ratio = medium.index_of_refraction / next_medium.index_of_refraction;
-        let (weight, trans, next_spectral, next_direction) = sample_direction(&ray, &hit, object.material.material_type, refract_ratio, rng);
+        let sample = sample_direction(&ray, &hit, object.material.material_type, refract_ratio, rng);
 
         let mut result = Color::new(0.0, 0.0, 0.0);
 
+        // add the light contributions
         match strategy {
             Strategy::Simple => {
                 result += object.material.emission;
             }
             Strategy::SampleLights => {
-                if spectral {
+                if specular {
                     result += object.material.emission;
                 }
 
-                if !next_spectral {
+                if sample.diffuse_fraction != 0.0 {
                     let light_start = hit.point + (*hit.normal * SHADOW_BIAS);
                     let light_contribution = sample_lights(scene, light_start, medium, rng, &hit);
-                    result += object.material.albedo * light_contribution;
+                    result += object.material.albedo * light_contribution * sample.diffuse_fraction;
                 }
             }
         }
 
+        // add the contribution of the next ray
         let next_ray = Ray {
-            start: hit.point + (*next_direction * SHADOW_BIAS),
-            direction: next_direction,
+            start: hit.point + (*sample.direction * SHADOW_BIAS),
+            direction: sample.direction,
         };
-        let next_medium = if trans { next_medium } else { medium };
-        let next_contribution = trace_ray(scene, strategy, &next_ray, rng, bounces_left - 1, next_spectral, next_medium);
+        let next_medium = if sample.crosses_surface { next_medium } else { medium };
+        let next_contribution = trace_ray(scene, strategy, &next_ray, rng, bounces_left - 1, sample.specular, next_medium);
 
-        result += object.material.albedo * next_contribution * weight;
+        result += object.material.albedo * next_contribution * sample.weight;
 
         (hit.t, result)
     } else {
@@ -189,26 +201,46 @@ fn trace_ray<R: Rng>(scene: &Scene, strategy: Strategy, ray: &Ray, rng: &mut R, 
     color_exp(medium.volumetric_color, t) * result
 }
 
-fn sample_direction<R: Rng>(ray: &Ray, hit: &Hit, material_type: MaterialType, refract_ratio: f32, rng: &mut R) -> (f32, bool, bool, Unit<Vec3>) {
+struct SampleInfo {
+    /// the direction of the next ray
+    direction: Unit<Vec3>,
+    /// the weight associated with the direction sampling, needs to be divided out of the contribution of the next ray
+    weight: f32,
+
+    /// whether this sample crosses the surface, used to determine the next medium
+    crosses_surface: bool,
+    /// whether this sample was the result of a specular event, used for light sampling
+    specular: bool,
+
+    /// the fraction of this surface that behaves diffuse, used for light sampling
+    diffuse_fraction: f32,
+}
+
+fn sample_direction<R: Rng>(ray: &Ray, hit: &Hit, material_type: MaterialType, refract_ratio: f32, rng: &mut R) -> SampleInfo {
     match material_type {
         MaterialType::Fixed => panic!("Can't sample direction for MaterialType::Fixed"),
         MaterialType::Diffuse => {
             let disk = Vec2::from_slice(&UnitDisc.sample(rng));
-            (0.5, false, false, disk_to_hemisphere(disk, hit.normal))
+            let direction = disk_to_hemisphere(disk, hit.normal);
+            SampleInfo { weight: 0.5, diffuse_fraction: 1.0, specular: false, crosses_surface: false, direction }
         }
         MaterialType::Mirror => {
-            (1.0, false, true, reflect_direction(ray.direction, hit.normal))
+            let direction = reflect_direction(ray.direction, hit.normal);
+            SampleInfo { weight: 1.0, diffuse_fraction: 0.0, specular: true, crosses_surface: false, direction }
         }
         MaterialType::Transparent => {
-            let (trans, dir) = snells_law(ray.direction, hit.normal, refract_ratio);
-            (1.0, trans, true, dir)
+            let (crosses_surface, direction) = snells_law(ray.direction, hit.normal, refract_ratio);
+            SampleInfo { weight: 1.0, diffuse_fraction: 0.0, specular: true, crosses_surface, direction }
         }
         MaterialType::DiffuseMirror(f) => {
-            if rng.gen::<f32>() < f {
+            let mut sample = if rng.gen::<f32>() < f {
                 sample_direction(ray, hit, MaterialType::Diffuse, refract_ratio, rng)
             } else {
                 sample_direction(ray, hit, MaterialType::Mirror, refract_ratio, rng)
-            }
+            };
+
+            sample.diffuse_fraction = f;
+            sample
         }
     }
 }

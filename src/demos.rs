@@ -41,7 +41,7 @@ fn material_diffuse(albedo: Color) -> Material {
 }
 
 fn material_mixed(albedo: Color, diffuse_fraction: f32) -> Material {
-    assert!((0.0..1.0).contains(&diffuse_fraction));
+    assert!((0.0..=1.0).contains(&diffuse_fraction));
     Material {
         material_type: MaterialType::DiffuseMirror(diffuse_fraction),
 
