@@ -19,6 +19,13 @@ pub struct CpuRenderer {
     pub sample_count: usize,
     pub max_bounces: usize,
     pub anti_alias: bool,
+    pub strategy: Strategy,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum Strategy {
+    Simple,
+    SampleLights,
 }
 
 impl Renderer for CpuRenderer {
@@ -47,7 +54,7 @@ impl Renderer for CpuRenderer {
 
                 for _ in 0..self.sample_count {
                     let ray = camera.ray(rng, x, *y);
-                    total += trace_ray(scene, &ray, rng, self.max_bounces, true, scene.camera.medium);
+                    total += trace_ray(scene, self.strategy, &ray, rng, self.max_bounces, true, scene.camera.medium);
                 }
 
                 let average = total / (self.sample_count as f32);
@@ -122,7 +129,7 @@ fn sample_lights<R: Rng>(scene: &Scene, next_start: Point3, medium: Medium, rng:
     result
 }
 
-fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize, spectral: bool, medium: Medium) -> Color {
+fn trace_ray<R: Rng>(scene: &Scene, strategy: Strategy, ray: &Ray, rng: &mut R, bounces_left: usize, spectral: bool, medium: Medium) -> Color {
     if bounces_left == 0 {
         return Color::new(0.0, 0.0, 0.0);
     }
@@ -142,18 +149,26 @@ fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize,
             object.material.outside
         };
 
-        let mut result = Color::new(0.0, 0.0, 0.0);
-
-        if spectral {
-            result += object.material.emission;
-        }
-
         let refract_ratio = medium.index_of_refraction / next_medium.index_of_refraction;
         let (weight, trans, next_spectral, next_direction) = sample_direction(&ray, &hit, object.material.material_type, refract_ratio, rng);
-        if !next_spectral {
-            let light_start = hit.point + (*hit.normal * SHADOW_BIAS);
-            let light_contribution = sample_lights(scene, light_start, medium, rng, &hit);
-            result += object.material.albedo * light_contribution;
+
+        let mut result = Color::new(0.0, 0.0, 0.0);
+
+        match strategy {
+            Strategy::Simple => {
+                result += object.material.emission;
+            }
+            Strategy::SampleLights => {
+                if spectral {
+                    result += object.material.emission;
+                }
+
+                if !next_spectral {
+                    let light_start = hit.point + (*hit.normal * SHADOW_BIAS);
+                    let light_contribution = sample_lights(scene, light_start, medium, rng, &hit);
+                    result += object.material.albedo * light_contribution;
+                }
+            }
         }
 
         let next_ray = Ray {
@@ -161,7 +176,7 @@ fn trace_ray<R: Rng>(scene: &Scene, ray: &Ray, rng: &mut R, bounces_left: usize,
             direction: next_direction,
         };
         let next_medium = if trans { next_medium } else { medium };
-        let next_contribution = trace_ray(scene, &next_ray, rng, bounces_left - 1, next_spectral, next_medium);
+        let next_contribution = trace_ray(scene, strategy, &next_ray, rng, bounces_left - 1, next_spectral, next_medium);
 
         result += object.material.albedo * next_contribution * weight;
 

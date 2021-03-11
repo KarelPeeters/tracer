@@ -11,7 +11,7 @@ use imgref::Img;
 use crate::common::Renderer;
 use crate::common::scene::Color;
 use crate::common::util::to_image;
-use crate::cpu::CpuRenderer;
+use crate::cpu::{CpuRenderer, Strategy};
 
 pub mod common;
 pub mod cpu;
@@ -22,9 +22,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let scene = demos::colored_spheres();
 
     let renderer = CpuRenderer {
-        sample_count: 1000,
+        sample_count: 100_000,
         max_bounces: 8,
         anti_alias: true,
+        strategy: Strategy::Simple,
     };
 
     let div = 8;
