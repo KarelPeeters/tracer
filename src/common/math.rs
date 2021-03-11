@@ -21,7 +21,7 @@ pub trait Norm: Div<f32, Output=Self> + Sized + Copy + Debug {
 
     fn normalized_and_get(self) -> (Unit<Self>, f32) {
         self.try_normalized_and_get()
-            .unwrap_or_else(|| panic!("nom should be > 0.0 but was {} for {:?}", self.norm(), self))
+            .unwrap_or_else(|| panic!("norm should be > 0.0 but was {} for {:?}", self.norm(), self))
     }
 
     fn try_normalized(self) -> Option<Unit<Self>> {
@@ -291,7 +291,7 @@ impl Sub<Point2> for Point2 {
 }
 
 
-/// A matrix that behaves as a 4x4 matrix with the last row fixed as [0, 0, 0, 1]
+/// A matrix that behaves like a 4x4 matrix with the last row fixed as [0, 0, 0, 1]
 #[derive(Copy, Clone, PartialEq)]
 struct Matrix4 {
     rows: [[f32; 4]; 4]
@@ -426,7 +426,7 @@ impl Matrix4 {
 #[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub struct Transform {
     //TODO also try a translate/quaternion/scale representation and compare performance
-    //  size should be way smaller at least, because won don't need to store the inverse
+    //  size should be way smaller at least, because we wouldn't need to store the inverse
     fwd: Matrix4,
     inv: Matrix4,
 }

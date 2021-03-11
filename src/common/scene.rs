@@ -47,6 +47,13 @@ pub struct Object {
     pub shape: Shape,
     pub material: Material,
 
+    /*TODO this is kind of sad: most objects need way less data than this complex transform:
+        sphere: (cx, cy, cz, r)
+        plane: (nx, ny, nz, d)
+        triangle: (ax, ay, az, bx, by, bz, cx, cy, cz, nx, ny, nz)
+        cylinder: (cx, cy, cz, dx, dy)
+       compared to transform which has 2 * 4 * 4 = 32 floats!
+     */
     pub transform: Transform,
 }
 

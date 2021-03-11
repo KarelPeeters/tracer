@@ -108,6 +108,7 @@ const SHADOW_BIAS: f32 = 0.0001;
 fn sample_lights<R: Rng>(scene: &Scene, next_start: Point3, medium: Medium, rng: &mut R, hit: &Hit) -> Color {
     let mut result = Color::new(0.0, 0.0, 0.0);
 
+    //TODO pre-filter out the lights, this scales badly with the amount of other options
     for light in &scene.objects {
         if is_black(light.material.emission) { continue; }
 
@@ -247,6 +248,8 @@ fn first_hit<'a>(scene: &'a Scene, ray: &Ray) -> Option<(&'a Object, Hit)> {
         point: Default::default(),
         normal: Vec3::z_axis(),
     };
+
+    // this initialization is okay because we return None at the end if we didn't hit anything
     let mut closest_object = scene.objects.first()?;
 
     for object in &scene.objects {
