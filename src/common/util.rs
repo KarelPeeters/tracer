@@ -50,3 +50,20 @@ pub fn obj_to_triangles(obj: &obj::Object, material: Material, transform: Transf
         })
     )
 }
+
+#[cfg(windows)]
+mod bindings {
+    ::windows::include_bindings!();
+}
+
+#[cfg(windows)]
+pub fn lower_process_priority() {
+    unsafe {
+        let curr_process = bindings::windows::win32::system_services::GetCurrentProcess();
+        let idle_priority = bindings::windows::win32::windows_programming::PROCESS_CREATION_FLAGS::IDLE_PRIORITY_CLASS;
+        bindings::windows::win32::system_services::SetPriorityClass(curr_process,idle_priority.0);
+    }
+}
+
+#[cfg(not(windows))]
+pub fn lower_process_priority() {}

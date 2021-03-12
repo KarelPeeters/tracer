@@ -4,25 +4,20 @@ version = "0.1.0"
 authors = ["Karel <karel.peeters.leuven@gmail.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 image = "0.23.14"
-#nalgebra = "0.19.0"
 palette = "0.5.0"
 rand = "0.8.3"
 rand_distr = "0.4.0"
 rayon = "1.5.0"
-#itertools = "0.8.2"
-#rand_xorshift = "0.2.0"
 wavefront_obj = "9.0.0"
-#alga = "0.9.3"
 imgref = "1.7.1"
 lazy_static = "1.4.0"
 exr = "1.1.0"
+windows = "0.4.0"
 
-#vulkano = "0.17"
-#vulkano-shaders = "0.17"
+[build-dependencies]
+windows = "0.4.0"
 
 [profile.dev]
 opt-level = 1

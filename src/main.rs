@@ -10,6 +10,7 @@ use imgref::ImgRef;
 
 use crate::common::scene::Color;
 use crate::cpu::{CpuRenderer, PixelResult, StopCondition, Strategy};
+use crate::common::util::lower_process_priority;
 
 pub mod common;
 pub mod cpu;
@@ -17,6 +18,8 @@ pub mod cpu;
 mod demos;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    lower_process_priority();
+
     let scene = demos::colored_spheres();
 
     let renderer = CpuRenderer {
@@ -27,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         print_progress: true,
     };
 
-    let div = 8;
+    let div = 1;
     let (width, height) = (1920 / div, 1080 / div);
 
     let start = Instant::now();
