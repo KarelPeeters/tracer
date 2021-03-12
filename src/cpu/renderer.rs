@@ -1,25 +1,32 @@
+use std::cmp::max;
 use std::f32;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 
-use imgref::ImgRefMut;
+use imgref::ImgVec;
 use rand::{Rng, thread_rng};
 use rand::distributions::Distribution;
 use rand::seq::SliceRandom;
 use rand_distr::UnitDisc;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
-use rayon::ThreadPoolBuilder;
 
 use crate::common::math::{Norm, Point3, Transform, Unit, Vec2, Vec3};
-use crate::common::Renderer;
 use crate::common::scene::{Camera, Color, MaterialType, Medium, Object, Scene};
 use crate::cpu::geometry::{Hit, Intersect, Ray};
+use crate::cpu::stats::ColorVarianceEstimator;
 
 #[derive(Debug)]
 pub struct CpuRenderer {
-    pub sample_count: usize,
-    pub max_bounces: usize,
+    pub stop_condition: StopCondition,
+    pub max_bounces: u32,
     pub anti_alias: bool,
     pub strategy: Strategy,
+    pub print_progress: bool,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum StopCondition {
+    SampleCount(u32),
+    Variance { min_samples: u32, max_relative_variance: f32 },
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -28,16 +35,23 @@ pub enum Strategy {
     SampleLights,
 }
 
-impl Renderer for CpuRenderer {
-    fn render(&self, scene: &Scene, mut target: ImgRefMut<Color>) {
-        let camera =
-            RayCamera::new(&scene.camera, self.anti_alias, target.width(), target.height());
+#[derive(Debug, Default, Copy, Clone)]
+pub struct PixelResult {
+    pub color: Color,
+    pub variance: Color,
+    pub rel_variance: Color,
+    pub samples: u32,
+}
 
-        ThreadPoolBuilder::new().num_threads(8).build_global().expect("Failed to build global thread pool");
+impl CpuRenderer {
+    pub fn render(&self, scene: &Scene, width: u32, height: u32) -> ImgVec<PixelResult> {
+        let camera = RayCamera::new(&scene.camera, self.anti_alias, width, height);
 
-        let progress_rows_done = AtomicUsize::default();
-        let height = target.height();
+        let progress_rows_done = AtomicU32::default();
         let progress_div = if height > 1000 { height / 1000 } else { 1 };
+
+        let target_buf = vec![PixelResult::default(); (width * height) as usize];
+        let mut target = ImgVec::new(target_buf, width as usize, height as usize);
 
         let mut rows: Vec<_> = target.rows_mut().enumerate().collect();
         rows.shuffle(&mut thread_rng());
@@ -45,24 +59,59 @@ impl Renderer for CpuRenderer {
         rows.par_iter_mut().for_each_init(|| thread_rng(), |rng, (y, row)| {
             let progress = progress_rows_done.fetch_add(1, Ordering::Relaxed);
 
-            if progress % progress_div == 0 {
+            if self.print_progress && progress % progress_div == 0 {
                 println!("Progress {:.3}", progress as f32 / height as f32)
             }
 
             row.iter_mut().enumerate().for_each(|(x, p)| {
-                let mut total = Color::new(0.0, 0.0, 0.0);
-
-                for _ in 0..self.sample_count {
-                    let ray = camera.ray(rng, x, *y);
-                    total += trace_ray(scene, self.strategy, &ray, rng, self.max_bounces, true, scene.camera.medium);
-                }
-
-                let average = total / (self.sample_count as f32);
-                *p = average;
+                *p = self.calculate_pixel(scene, &camera, rng, x as u32, *y as u32);
             });
         });
+
+        target
     }
 }
+
+impl CpuRenderer {
+    fn calculate_pixel(&self, scene: &Scene, camera: &RayCamera, rng: &mut impl Rng, x: u32, y: u32) -> PixelResult {
+        let mut estimator = ColorVarianceEstimator::default();
+
+        while !self.stop_condition.is_done(&estimator) {
+            let ray = camera.ray(rng, x, y);
+            let color = trace_ray(scene, self.strategy, &ray, rng, self.max_bounces, true, scene.camera.medium);
+            estimator.update(color);
+        }
+
+        PixelResult {
+            color: estimator.mean,
+            variance: estimator.variance(),
+            rel_variance: estimator.variance() / (estimator.mean + Color::new(1.0, 1.0, 1.0)),
+            samples: estimator.count,
+        }
+    }
+}
+
+impl StopCondition {
+    fn is_done(self, estimator: &ColorVarianceEstimator) -> bool {
+        fn variance_lte(estimator: &ColorVarianceEstimator, right: f32) -> bool {
+            //TODO figure out a better way to allow blackness and add a mechanism to ignore variance in huge means
+            let rel_variance = estimator.variance() / (estimator.mean + Color::new(1.0, 1.0, 1.0));
+
+            //we care about the variance of the mean, not the variance of the values themselves
+            let left = rel_variance / (estimator.count as f32).sqrt();
+            left.red <= right && left.green <= right && left.blue <= right
+        }
+
+        match self {
+            StopCondition::SampleCount(samples) =>
+                estimator.count >= samples,
+            StopCondition::Variance { min_samples, max_relative_variance } =>
+                estimator.count >= max(min_samples, 2) &&
+                    variance_lte(estimator, max_relative_variance),
+        }
+    }
+}
+
 
 struct RayCamera {
     x_span: f32,
@@ -74,7 +123,7 @@ struct RayCamera {
 }
 
 impl RayCamera {
-    fn new(camera: &Camera, anti_alias: bool, width: usize, height: usize) -> RayCamera {
+    fn new(camera: &Camera, anti_alias: bool, width: u32, height: u32) -> RayCamera {
         let x_span = 2.0 * (camera.fov_horizontal.radians / 2.0).tan();
         RayCamera {
             x_span,
@@ -86,7 +135,7 @@ impl RayCamera {
         }
     }
 
-    fn ray<R: Rng>(&self, rng: &mut R, x: usize, y: usize) -> Ray {
+    fn ray<R: Rng>(&self, rng: &mut R, x: u32, y: u32) -> Ray {
         let (dx, dy) = if self.anti_alias {
             rng.gen()
         } else {
@@ -135,9 +184,9 @@ fn trace_ray<R: Rng>(
     strategy: Strategy,
     ray: &Ray,
     rng: &mut R,
-    bounces_left: usize,
+    bounces_left: u32,
     specular: bool,
-    medium: Medium
+    medium: Medium,
 ) -> Color {
     if bounces_left == 0 {
         return Color::new(0.0, 0.0, 0.0);
@@ -256,9 +305,10 @@ fn reflect_direction(vec: Unit<Vec3>, normal: Unit<Vec3>) -> Unit<Vec3> {
     Unit::new_unchecked((*vec) - (*normal * (2.0 * vec.dot(*normal))))
 }
 
-/// Compute the outgoing direction according to Snell's law
-/// (https://en.wikipedia.org/wiki/Snell%27s_law#Vector_form), including total internal reflection.
-/// `vec` and normal should point in opposite directions
+/// Compute the outgoing direction according to
+/// [Snell's law](https://en.wikipedia.org/wiki/Snell%27s_law#Vector_form),
+/// including total internal reflection.
+/// `vec` and `normal` should point in opposite directions.
 fn snells_law(vec: Unit<Vec3>, normal: Unit<Vec3>, r: f32) -> (bool, Unit<Vec3>) {
     let c = -normal.dot(*vec);
     let x = 1.0 - r * r * (1.0 - c * c);

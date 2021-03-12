@@ -28,6 +28,5 @@ exr = "1.1.0"
 opt-level = 1
 
 [profile.release]
-codegen-units = 1
 debug = true
-opt-level=3
+opt-level = 2
