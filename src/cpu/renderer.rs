@@ -1,13 +1,15 @@
-use std::cmp::max;
+use std::cmp::{max, min};
 use std::f32;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::ops::Range;
 
 use imgref::ImgVec;
+use itertools::{Itertools, zip_eq};
 use rand::{Rng, thread_rng};
 use rand::distributions::Distribution;
-use rand::seq::SliceRandom;
+use rand::prelude::SliceRandom;
 use rand_distr::UnitDisc;
-use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use tev_client::{PacketCloseImage, PacketCreateImage, PacketUpdateImage, TevClient};
 
 use crate::common::math::{Norm, Point3, Transform, Unit, Vec2, Vec3};
 use crate::common::scene::{Camera, Color, MaterialType, Medium, Object, Scene};
@@ -43,30 +45,108 @@ pub struct PixelResult {
     pub samples: u32,
 }
 
+#[derive(Debug, Copy, Clone)]
+struct Block {
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+}
+
+//TODO write a proper iterator for the coords in Block instead
+//  * iterate over y slower than x!
+//  * be careful about empty x/y ranges!
+//  * write a custom fold and size_hint ugh this is getting annoying?
+impl Block {
+    fn x_range(self) -> Range<u32> {
+        self.x..(self.x + self.width)
+    }
+
+    fn y_range(self) -> Range<u32> {
+        self.y..(self.y + self.height)
+    }
+}
+
+fn split_into_blocks(width: u32, height: u32) -> Vec<Block> {
+    let block_size: u32 = 1;
+
+    let mut result = Vec::new();
+    for x in (0..width).step_by(block_size as usize) {
+        for y in (0..height).step_by(block_size as usize) {
+            result.push(Block {
+                x,
+                y,
+                width: min(block_size, width - x),
+                height: min(block_size, height - y),
+            })
+        }
+    }
+
+    result
+}
+
 impl CpuRenderer {
     pub fn render(&self, scene: &Scene, width: u32, height: u32) -> ImgVec<PixelResult> {
         let camera = RayCamera::new(&scene.camera, self.anti_alias, width, height);
 
-        let progress_rows_done = AtomicU32::default();
-        let progress_div = if height > 1000 { height / 1000 } else { 1 };
-
         let target_buf = vec![PixelResult::default(); (width * height) as usize];
-        let mut target = ImgVec::new(target_buf, width as usize, height as usize);
+        let target = ImgVec::new(target_buf, width as usize, height as usize);
 
-        let mut rows: Vec<_> = target.rows_mut().enumerate().collect();
-        rows.shuffle(&mut thread_rng());
+        let mut blocks = split_into_blocks(width, height);
+        blocks.shuffle(&mut thread_rng());
+        let (sender, receiver) =
+            crossbeam::channel::unbounded::<(Block, Vec<PixelResult>)>();
 
-        rows.par_iter_mut().for_each_init(|| thread_rng(), |rng, (y, row)| {
-            let progress = progress_rows_done.fetch_add(1, Ordering::Relaxed);
+        let mut tev = TevClient::spawn_path_default().unwrap();
+        tev.send(PacketCloseImage { image_name: "test" }).unwrap();
+        tev.send(PacketCreateImage {
+            image_name: "test",
+            grab_focus: false,
+            width,
+            height,
+            channel_names: &["R", "G", "B"],
+        }).expect("Failed to crate tev image");
 
-            if self.print_progress && progress % progress_div == 0 {
-                println!("Progress {:.3}", progress as f32 / height as f32)
+        let builder = std::thread::Builder::new().name("collector".to_owned());
+        let collector_thread = builder.spawn(move || {
+            for (block, pixels) in receiver.clone() {
+                let mut data = Vec::new();
+                for dy in 0..block.height {
+                    for dx in 0..block.width {
+                        let p = pixels[(dx + dy * block.width) as usize];
+                        data.extend_from_slice(&[p.color.red, p.color.green, p.color.blue])
+                    }
+                }
+
+                tev.send(PacketUpdateImage {
+                    image_name: "test",
+                    grab_focus: false,
+                    channel_names: &["R", "G", "B"],
+                    channel_offsets: &[0, 1, 2],
+                    channel_strides: &[3, 3, 3],
+                    x: block.x,
+                    y: block.y,
+                    width: block.width,
+                    height: block.height,
+                    data: &data,
+                }).expect("Failed to send update to tev")
+            }
+        }).expect("Failed to spawn collector thread");
+
+        blocks.par_iter().for_each_init(thread_rng, |rng, block: &Block| {
+            let mut data = Vec::new();
+            for y in block.y_range() {
+                for x in block.x_range() {
+                    data.push(self.calculate_pixel(scene, &camera, rng, x, y))
+                }
             }
 
-            row.iter_mut().enumerate().for_each(|(x, p)| {
-                *p = self.calculate_pixel(scene, &camera, rng, x as u32, *y as u32);
-            });
+            sender.send((*block, data)).expect("Failed to send block result over channel");
         });
+
+        drop(sender);
+
+        collector_thread.join().expect("Joining collector thread deadlocked?");
 
         target
     }
@@ -82,10 +162,11 @@ impl CpuRenderer {
             estimator.update(color);
         }
 
+        let variance = estimator.variance().unwrap_or(Color::new(0.0, 0.0, 0.0));
         PixelResult {
             color: estimator.mean,
-            variance: estimator.variance(),
-            rel_variance: estimator.variance() / (estimator.mean + Color::new(1.0, 1.0, 1.0)),
+            variance,
+            rel_variance: variance / (estimator.mean + Color::new(1.0, 1.0, 1.0)),
             samples: estimator.count,
         }
     }
@@ -95,7 +176,8 @@ impl StopCondition {
     fn is_done(self, estimator: &ColorVarianceEstimator) -> bool {
         fn variance_lte(estimator: &ColorVarianceEstimator, right: f32) -> bool {
             //TODO figure out a better way to allow blackness and add a mechanism to ignore variance in huge means
-            let rel_variance = estimator.variance() / (estimator.mean + Color::new(1.0, 1.0, 1.0));
+            let variance = estimator.variance().expect("Not enough samples to even compute the variance!");
+            let rel_variance = variance / (estimator.mean + Color::new(1.0, 1.0, 1.0));
 
             //we care about the variance of the mean, not the variance of the values themselves
             let left = rel_variance / (estimator.count as f32).sqrt();
@@ -351,7 +433,7 @@ fn first_hit<'a>(scene: &'a Scene, ray: &Ray) -> Option<(&'a Object, Hit)> {
 }
 
 fn is_black(color: Color) -> bool {
-    return color == Color::new(0.0, 0.0, 0.0);
+    color == Color::new(0.0, 0.0, 0.0)
 }
 
 fn color_exp(base: Color, exp: f32) -> Color {

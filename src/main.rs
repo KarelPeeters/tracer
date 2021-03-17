@@ -11,19 +11,51 @@ use imgref::ImgRef;
 use crate::common::scene::Color;
 use crate::cpu::{CpuRenderer, PixelResult, StopCondition, Strategy};
 use crate::common::util::lower_process_priority;
+use tev_client::{TevClient, PacketCreateImage, PacketUpdateImage};
+use itertools::Itertools;
 
 pub mod common;
 pub mod cpu;
 
 mod demos;
 
+fn tev_test() -> Result<(), Box<dyn std::error::Error>>{
+    let mut tev = TevClient::spawn_path_default()?;
+
+    tev.send(PacketCreateImage {
+        image_name: "test",
+        grab_focus: false,
+        width: 4,
+        height: 4,
+        channel_names: &["R", "G", "B"]
+    })?;
+
+    tev.send(PacketUpdateImage {
+        image_name: "test",
+        grab_focus: false,
+        channel_names: &["R", "G", "B"],
+        channel_offsets: &[0, 1, 2],
+        channel_strides: &[3, 3, 3],
+        x: 0,
+        y: 0,
+        width: 4,
+        height: 4,
+        data: &(0..(3 * 16)).map(|f| f as f32).collect_vec(),
+    })?;
+
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // tev_test()?;
+    // return Ok(());
+
     lower_process_priority();
 
     let scene = demos::colored_spheres();
 
     let renderer = CpuRenderer {
-        stop_condition: StopCondition::SampleCount(1000),
+        stop_condition: StopCondition::SampleCount(120),
         max_bounces: 8,
         anti_alias: true,
         strategy: Strategy::SampleLights,
@@ -98,7 +130,7 @@ pub fn to_discrete_image(image: ImgRef<PixelResult>) -> (DiscreteImage, Discrete
         ]);
     }
 
-    return (result, clipped);
+    (result, clipped)
 }
 
 fn save_exr_image(image: ImgRef<PixelResult>, path: impl AsRef<std::path::Path>) -> exr::error::Result<()> {

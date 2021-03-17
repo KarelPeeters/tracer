@@ -100,7 +100,7 @@ fn triangle_intersect(ray: &Ray) -> Option<Hit> {
     plane_intersect(ray).filter(|hit| {
         let x = hit.point.x;
         let y = hit.point.y;
-        (0.0 <= x && x < 1.0) && (0.0 <= y && y < 1.0) && (x + y < 1.0)
+        (0.0..1.0).contains(&x) && (0.0..1.0).contains(&y) && (x + y < 1.0)
     })
 }
 
@@ -175,13 +175,13 @@ impl Intersect for Object {
         let dist = (self.transform.inv() * from).distance_to(Point3::origin());
         let delta = 2.0 * clamp(1.0 / dist, -1.0, 1.0).asin();
 
-        return delta * delta / 4.0 / std::f32::consts::PI;
+        delta * delta / 4.0 / std::f32::consts::PI
     }
 
     fn area(&self) -> f32 {
         assert_eq!(self.shape, Shape::Sphere);
 
-        return 4.0 * std::f32::consts::PI;
+        4.0 * std::f32::consts::PI
     }
 
     fn sample<R: Rng>(&self, rng: &mut R) -> (f32, Point3) {
