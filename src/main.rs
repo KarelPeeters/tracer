@@ -7,49 +7,20 @@ use std::time::Instant;
 
 use exr::prelude::WritableImage;
 use imgref::ImgRef;
+use tev_client::TevClient;
 
 use crate::common::scene::Color;
-use crate::cpu::{CpuRenderer, PixelResult, StopCondition, Strategy, CpuRenderSettings, PrintProgress};
 use crate::common::util::lower_process_priority;
-use tev_client::{TevClient, PacketCreateImage, PacketUpdateImage};
-use itertools::Itertools;
+use crate::cpu::{CpuRenderer, CpuRenderSettings, PixelResult, PrintProgress, StopCondition, Strategy, CombinedProgress};
+use crate::tev::TevProgress;
 
 pub mod common;
 pub mod cpu;
 
 mod demos;
-
-fn tev_test() -> Result<(), Box<dyn std::error::Error>>{
-    let mut tev = TevClient::spawn_path_default()?;
-
-    tev.send(PacketCreateImage {
-        image_name: "test",
-        grab_focus: false,
-        width: 4,
-        height: 4,
-        channel_names: &["R", "G", "B"]
-    })?;
-
-    tev.send(PacketUpdateImage {
-        image_name: "test",
-        grab_focus: false,
-        channel_names: &["R", "G", "B"],
-        channel_offsets: &[0, 1, 2],
-        channel_strides: &[3, 3, 3],
-        x: 0,
-        y: 0,
-        width: 4,
-        height: 4,
-        data: &(0..(3 * 16)).map(|f| f as f32).collect_vec(),
-    })?;
-
-    Ok(())
-}
+mod tev;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // tev_test()?;
-    // return Ok(());
-
     lower_process_priority();
 
     let scene = demos::colored_spheres();
@@ -61,7 +32,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             anti_alias: true,
             strategy: Strategy::SampleLights,
         },
-        progress_handler: PrintProgress,
+        progress_handler: CombinedProgress::new(
+            PrintProgress,
+            TevProgress::new("test", TevClient::spawn_path_default()?)
+        ),
     };
     let info = format!("{:#?}\n\n{:#?}", &renderer.settings, scene);
 

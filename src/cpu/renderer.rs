@@ -1,14 +1,9 @@
-use std::cmp::{max};
+use std::cmp::max;
 use std::f32;
 
-
-
-use rand::{Rng};
 use rand::distributions::Distribution;
-
+use rand::Rng;
 use rand_distr::UnitDisc;
-use rayon::iter::{ParallelIterator};
-
 
 use crate::common::math::{Norm, Point3, Transform, Unit, Vec2, Vec3};
 use crate::common::scene::{Camera, Color, MaterialType, Medium, Object, Scene};

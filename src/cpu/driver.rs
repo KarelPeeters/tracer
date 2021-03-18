@@ -2,16 +2,11 @@ use std::cmp::min;
 use std::ops::Range;
 
 use imgref::ImgVec;
-use rand::{thread_rng};
-
 use rand::prelude::SliceRandom;
-
+use rand::thread_rng;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-
-
-use crate::common::scene::{Scene};
-
+use crate::common::scene::Scene;
 use crate::cpu::renderer::{CpuRenderSettings, PixelResult, RayCamera};
 
 pub struct CpuRenderer<P: ProgressHandler> {
@@ -22,15 +17,15 @@ pub struct CpuRenderer<P: ProgressHandler> {
 pub trait ProgressHandler: Send {
     type State: Send + 'static;
     fn init(self, width: u32, height: u32) -> Self::State;
-    fn update(state: &mut Self::State, block: Block, data: &Vec<PixelResult>);
+    fn update(state: &mut Self::State, block: Block, pixels: &Vec<PixelResult>);
 }
 
 #[derive(Debug, Copy, Clone)]
 pub struct Block {
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
 }
 
 //TODO write a proper iterator for the coords in Block instead
@@ -154,6 +149,12 @@ pub struct CombinedProgress<L: ProgressHandler, R: ProgressHandler> {
     right: R,
 }
 
+impl<L: ProgressHandler, R: ProgressHandler> CombinedProgress<L, R> {
+    pub fn new(left: L, right: R) -> Self {
+        CombinedProgress { left, right }
+    }
+}
+
 impl<L: ProgressHandler, R: ProgressHandler> ProgressHandler for CombinedProgress<L, R> {
     type State = (L::State, R::State);
 
@@ -161,8 +162,8 @@ impl<L: ProgressHandler, R: ProgressHandler> ProgressHandler for CombinedProgres
         (L::init(self.left, width, height), R::init(self.right, width, height))
     }
 
-    fn update(state: &mut Self::State, block: Block, data: &Vec<PixelResult>) {
-        L::update(&mut state.0, block, data);
-        R::update(&mut state.1, block, data);
+    fn update(state: &mut Self::State, block: Block, pixels: &Vec<PixelResult>) {
+        L::update(&mut state.0, block, pixels);
+        R::update(&mut state.1, block, pixels);
     }
 }
