@@ -22,9 +22,12 @@ impl ColorVarianceEstimator {
     }
 
     /// Returns the current variance.
-    pub fn variance(&self) -> Color {
-        assert!(self.count >= 2, "variance can only be estimated if we've seen at least two samples");
-        self.m2 / (self.count as f32)
+    pub fn variance(&self) -> Option<Color> {
+        if self.count >= 2 {
+            Some(self.m2 / (self.count as f32))
+        } else {
+            return None
+        }
     }
 }
 
@@ -42,14 +45,15 @@ mod test {
             let expected_count = (i + 1) as u32;
 
             if i + 1 >= 2 {
-                let (count, mean, variance) = estimator.get();
-                let mean = mean.red;
-                let variance = variance.red;
+                let mean = estimator.mean.red;
+                let variance = estimator.variance()
+                    .expect("Variance should be available once we have at least two samples")
+                    .red;
 
                 let expected_mean = xs[0..i + 1].iter().copied().sum::<f32>() / (expected_count as f32);
                 let expected_variance = xs[0..i + 1].iter().map(|&x| (x - expected_mean).powi(2)).sum::<f32>() / (expected_count as f32);
 
-                assert_eq!(expected_count, count);
+                assert_eq!(expected_count, estimator.count);
                 assert!(expected_mean - mean < 0.00001);
                 assert!(expected_variance - variance < 0.00001);
             }

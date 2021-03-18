@@ -1,13 +1,9 @@
 use std::cmp::max;
 use std::f32;
-use std::sync::atomic::{AtomicU32, Ordering};
 
-use imgref::ImgVec;
-use rand::{Rng, thread_rng};
 use rand::distributions::Distribution;
-use rand::seq::SliceRandom;
+use rand::Rng;
 use rand_distr::UnitDisc;
-use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
 use crate::common::math::{Norm, Point3, Transform, Unit, Vec2, Vec3};
 use crate::common::scene::{Camera, Color, MaterialType, Medium, Object, Scene};
@@ -15,12 +11,11 @@ use crate::cpu::geometry::{Hit, Intersect, Ray};
 use crate::cpu::stats::ColorVarianceEstimator;
 
 #[derive(Debug)]
-pub struct CpuRenderer {
+pub struct CpuRenderSettings {
     pub stop_condition: StopCondition,
     pub max_bounces: u32,
     pub anti_alias: bool,
     pub strategy: Strategy,
-    pub print_progress: bool,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -43,37 +38,8 @@ pub struct PixelResult {
     pub samples: u32,
 }
 
-impl CpuRenderer {
-    pub fn render(&self, scene: &Scene, width: u32, height: u32) -> ImgVec<PixelResult> {
-        let camera = RayCamera::new(&scene.camera, self.anti_alias, width, height);
-
-        let progress_rows_done = AtomicU32::default();
-        let progress_div = if height > 1000 { height / 1000 } else { 1 };
-
-        let target_buf = vec![PixelResult::default(); (width * height) as usize];
-        let mut target = ImgVec::new(target_buf, width as usize, height as usize);
-
-        let mut rows: Vec<_> = target.rows_mut().enumerate().collect();
-        rows.shuffle(&mut thread_rng());
-
-        rows.par_iter_mut().for_each_init(|| thread_rng(), |rng, (y, row)| {
-            let progress = progress_rows_done.fetch_add(1, Ordering::Relaxed);
-
-            if self.print_progress && progress % progress_div == 0 {
-                println!("Progress {:.3}", progress as f32 / height as f32)
-            }
-
-            row.iter_mut().enumerate().for_each(|(x, p)| {
-                *p = self.calculate_pixel(scene, &camera, rng, x as u32, *y as u32);
-            });
-        });
-
-        target
-    }
-}
-
-impl CpuRenderer {
-    fn calculate_pixel(&self, scene: &Scene, camera: &RayCamera, rng: &mut impl Rng, x: u32, y: u32) -> PixelResult {
+impl CpuRenderSettings {
+    pub fn calculate_pixel(&self, scene: &Scene, camera: &RayCamera, rng: &mut impl Rng, x: u32, y: u32) -> PixelResult {
         let mut estimator = ColorVarianceEstimator::default();
 
         while !self.stop_condition.is_done(&estimator) {
@@ -82,10 +48,11 @@ impl CpuRenderer {
             estimator.update(color);
         }
 
+        let variance = estimator.variance().unwrap_or(Color::new(0.0, 0.0, 0.0));
         PixelResult {
             color: estimator.mean,
-            variance: estimator.variance(),
-            rel_variance: estimator.variance() / (estimator.mean + Color::new(1.0, 1.0, 1.0)),
+            variance,
+            rel_variance: variance / (estimator.mean + Color::new(1.0, 1.0, 1.0)),
             samples: estimator.count,
         }
     }
@@ -95,7 +62,8 @@ impl StopCondition {
     fn is_done(self, estimator: &ColorVarianceEstimator) -> bool {
         fn variance_lte(estimator: &ColorVarianceEstimator, right: f32) -> bool {
             //TODO figure out a better way to allow blackness and add a mechanism to ignore variance in huge means
-            let rel_variance = estimator.variance() / (estimator.mean + Color::new(1.0, 1.0, 1.0));
+            let variance = estimator.variance().expect("Not enough samples to even compute the variance!");
+            let rel_variance = variance / (estimator.mean + Color::new(1.0, 1.0, 1.0));
 
             //we care about the variance of the mean, not the variance of the values themselves
             let left = rel_variance / (estimator.count as f32).sqrt();
@@ -113,7 +81,7 @@ impl StopCondition {
 }
 
 
-struct RayCamera {
+pub struct RayCamera {
     x_span: f32,
     y_span: f32,
     width: f32,
@@ -123,7 +91,7 @@ struct RayCamera {
 }
 
 impl RayCamera {
-    fn new(camera: &Camera, anti_alias: bool, width: u32, height: u32) -> RayCamera {
+    pub fn new(camera: &Camera, anti_alias: bool, width: u32, height: u32) -> RayCamera {
         let x_span = 2.0 * (camera.fov_horizontal.radians / 2.0).tan();
         RayCamera {
             x_span,
@@ -351,7 +319,7 @@ fn first_hit<'a>(scene: &'a Scene, ray: &Ray) -> Option<(&'a Object, Hit)> {
 }
 
 fn is_black(color: Color) -> bool {
-    return color == Color::new(0.0, 0.0, 0.0);
+    color == Color::new(0.0, 0.0, 0.0)
 }
 
 fn color_exp(base: Color, exp: f32) -> Color {

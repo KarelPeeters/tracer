@@ -7,15 +7,18 @@ use std::time::Instant;
 
 use exr::prelude::WritableImage;
 use imgref::ImgRef;
+use tev_client::TevClient;
 
 use crate::common::scene::Color;
-use crate::cpu::{CpuRenderer, PixelResult, StopCondition, Strategy};
 use crate::common::util::lower_process_priority;
+use crate::cpu::{CpuRenderer, CpuRenderSettings, PixelResult, PrintProgress, StopCondition, Strategy, CombinedProgress};
+use crate::tev::TevProgress;
 
 pub mod common;
 pub mod cpu;
 
 mod demos;
+mod tev;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     lower_process_priority();
@@ -23,12 +26,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let scene = demos::colored_spheres();
 
     let renderer = CpuRenderer {
-        stop_condition: StopCondition::SampleCount(1000),
-        max_bounces: 8,
-        anti_alias: true,
-        strategy: Strategy::SampleLights,
-        print_progress: true,
+        settings: CpuRenderSettings {
+            stop_condition: StopCondition::SampleCount(10),
+            max_bounces: 8,
+            anti_alias: true,
+            strategy: Strategy::SampleLights,
+        },
+        progress_handler: CombinedProgress::new(
+            PrintProgress,
+            TevProgress::new("test", TevClient::spawn_path_default()?)
+        ),
     };
+    let info = format!("{:#?}\n\n{:#?}", &renderer.settings, scene);
 
     let div = 1;
     let (width, height) = (1920 / div, 1080 / div);
@@ -37,7 +46,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let image = renderer.render(&scene, width, height);
     println!("Render took {:?}s", (Instant::now() - start).as_secs_f32());
 
-    let info = format!("{:#?}\n\n{:#?}", renderer, scene);
     let (image_discrete, _) = to_discrete_image(image.as_ref());
 
     let output_paths = [PathBuf::from("ignored/output"), pick_output_file_path()?];
@@ -98,7 +106,7 @@ pub fn to_discrete_image(image: ImgRef<PixelResult>) -> (DiscreteImage, Discrete
         ]);
     }
 
-    return (result, clipped);
+    (result, clipped)
 }
 
 fn save_exr_image(image: ImgRef<PixelResult>, path: impl AsRef<std::path::Path>) -> exr::error::Result<()> {
