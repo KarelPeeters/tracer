@@ -46,7 +46,9 @@ mod test {
 
             if i + 1 >= 2 {
                 let mean = estimator.mean.red;
-                let variance = estimator.variance().red;
+                let variance = estimator.variance()
+                    .expect("Variance should be available once we have at least two samples")
+                    .red;
 
                 let expected_mean = xs[0..i + 1].iter().copied().sum::<f32>() / (expected_count as f32);
                 let expected_variance = xs[0..i + 1].iter().map(|&x| (x - expected_mean).powi(2)).sum::<f32>() / (expected_count as f32);

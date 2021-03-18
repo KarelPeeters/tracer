@@ -1,15 +1,14 @@
-use std::cmp::{max, min};
+use std::cmp::{max};
 use std::f32;
-use std::ops::Range;
 
-use imgref::ImgVec;
-use itertools::{Itertools, zip_eq};
-use rand::{Rng, thread_rng};
+
+
+use rand::{Rng};
 use rand::distributions::Distribution;
-use rand::prelude::SliceRandom;
+
 use rand_distr::UnitDisc;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use tev_client::{PacketCloseImage, PacketCreateImage, PacketUpdateImage, TevClient};
+use rayon::iter::{ParallelIterator};
+
 
 use crate::common::math::{Norm, Point3, Transform, Unit, Vec2, Vec3};
 use crate::common::scene::{Camera, Color, MaterialType, Medium, Object, Scene};
@@ -17,12 +16,11 @@ use crate::cpu::geometry::{Hit, Intersect, Ray};
 use crate::cpu::stats::ColorVarianceEstimator;
 
 #[derive(Debug)]
-pub struct CpuRenderer {
+pub struct CpuRenderSettings {
     pub stop_condition: StopCondition,
     pub max_bounces: u32,
     pub anti_alias: bool,
     pub strategy: Strategy,
-    pub print_progress: bool,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -45,115 +43,8 @@ pub struct PixelResult {
     pub samples: u32,
 }
 
-#[derive(Debug, Copy, Clone)]
-struct Block {
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
-}
-
-//TODO write a proper iterator for the coords in Block instead
-//  * iterate over y slower than x!
-//  * be careful about empty x/y ranges!
-//  * write a custom fold and size_hint ugh this is getting annoying?
-impl Block {
-    fn x_range(self) -> Range<u32> {
-        self.x..(self.x + self.width)
-    }
-
-    fn y_range(self) -> Range<u32> {
-        self.y..(self.y + self.height)
-    }
-}
-
-fn split_into_blocks(width: u32, height: u32) -> Vec<Block> {
-    let block_size: u32 = 1;
-
-    let mut result = Vec::new();
-    for x in (0..width).step_by(block_size as usize) {
-        for y in (0..height).step_by(block_size as usize) {
-            result.push(Block {
-                x,
-                y,
-                width: min(block_size, width - x),
-                height: min(block_size, height - y),
-            })
-        }
-    }
-
-    result
-}
-
-impl CpuRenderer {
-    pub fn render(&self, scene: &Scene, width: u32, height: u32) -> ImgVec<PixelResult> {
-        let camera = RayCamera::new(&scene.camera, self.anti_alias, width, height);
-
-        let target_buf = vec![PixelResult::default(); (width * height) as usize];
-        let target = ImgVec::new(target_buf, width as usize, height as usize);
-
-        let mut blocks = split_into_blocks(width, height);
-        blocks.shuffle(&mut thread_rng());
-        let (sender, receiver) =
-            crossbeam::channel::unbounded::<(Block, Vec<PixelResult>)>();
-
-        let mut tev = TevClient::spawn_path_default().unwrap();
-        tev.send(PacketCloseImage { image_name: "test" }).unwrap();
-        tev.send(PacketCreateImage {
-            image_name: "test",
-            grab_focus: false,
-            width,
-            height,
-            channel_names: &["R", "G", "B"],
-        }).expect("Failed to crate tev image");
-
-        let builder = std::thread::Builder::new().name("collector".to_owned());
-        let collector_thread = builder.spawn(move || {
-            for (block, pixels) in receiver.clone() {
-                let mut data = Vec::new();
-                for dy in 0..block.height {
-                    for dx in 0..block.width {
-                        let p = pixels[(dx + dy * block.width) as usize];
-                        data.extend_from_slice(&[p.color.red, p.color.green, p.color.blue])
-                    }
-                }
-
-                tev.send(PacketUpdateImage {
-                    image_name: "test",
-                    grab_focus: false,
-                    channel_names: &["R", "G", "B"],
-                    channel_offsets: &[0, 1, 2],
-                    channel_strides: &[3, 3, 3],
-                    x: block.x,
-                    y: block.y,
-                    width: block.width,
-                    height: block.height,
-                    data: &data,
-                }).expect("Failed to send update to tev")
-            }
-        }).expect("Failed to spawn collector thread");
-
-        blocks.par_iter().for_each_init(thread_rng, |rng, block: &Block| {
-            let mut data = Vec::new();
-            for y in block.y_range() {
-                for x in block.x_range() {
-                    data.push(self.calculate_pixel(scene, &camera, rng, x, y))
-                }
-            }
-
-            sender.send((*block, data)).expect("Failed to send block result over channel");
-        });
-
-        drop(sender);
-
-        collector_thread.join().expect("Joining collector thread deadlocked?");
-
-        target
-    }
-}
-
-impl CpuRenderer {
-    fn calculate_pixel(&self, scene: &Scene, camera: &RayCamera, rng: &mut impl Rng, x: u32, y: u32) -> PixelResult {
+impl CpuRenderSettings {
+    pub fn calculate_pixel(&self, scene: &Scene, camera: &RayCamera, rng: &mut impl Rng, x: u32, y: u32) -> PixelResult {
         let mut estimator = ColorVarianceEstimator::default();
 
         while !self.stop_condition.is_done(&estimator) {
@@ -195,7 +86,7 @@ impl StopCondition {
 }
 
 
-struct RayCamera {
+pub struct RayCamera {
     x_span: f32,
     y_span: f32,
     width: f32,
@@ -205,7 +96,7 @@ struct RayCamera {
 }
 
 impl RayCamera {
-    fn new(camera: &Camera, anti_alias: bool, width: u32, height: u32) -> RayCamera {
+    pub fn new(camera: &Camera, anti_alias: bool, width: u32, height: u32) -> RayCamera {
         let x_span = 2.0 * (camera.fov_horizontal.radians / 2.0).tan();
         RayCamera {
             x_span,

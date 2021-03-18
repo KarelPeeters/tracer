@@ -9,7 +9,7 @@ use exr::prelude::WritableImage;
 use imgref::ImgRef;
 
 use crate::common::scene::Color;
-use crate::cpu::{CpuRenderer, PixelResult, StopCondition, Strategy};
+use crate::cpu::{CpuRenderer, PixelResult, StopCondition, Strategy, CpuRenderSettings, PrintProgress};
 use crate::common::util::lower_process_priority;
 use tev_client::{TevClient, PacketCreateImage, PacketUpdateImage};
 use itertools::Itertools;
@@ -55,12 +55,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let scene = demos::colored_spheres();
 
     let renderer = CpuRenderer {
-        stop_condition: StopCondition::SampleCount(120),
-        max_bounces: 8,
-        anti_alias: true,
-        strategy: Strategy::SampleLights,
-        print_progress: true,
+        settings: CpuRenderSettings {
+            stop_condition: StopCondition::SampleCount(10),
+            max_bounces: 8,
+            anti_alias: true,
+            strategy: Strategy::SampleLights,
+        },
+        progress_handler: PrintProgress,
     };
+    let info = format!("{:#?}\n\n{:#?}", &renderer.settings, scene);
 
     let div = 1;
     let (width, height) = (1920 / div, 1080 / div);
@@ -69,7 +72,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let image = renderer.render(&scene, width, height);
     println!("Render took {:?}s", (Instant::now() - start).as_secs_f32());
 
-    let info = format!("{:#?}\n\n{:#?}", renderer, scene);
     let (image_discrete, _) = to_discrete_image(image.as_ref());
 
     let output_paths = [PathBuf::from("ignored/output"), pick_output_file_path()?];
