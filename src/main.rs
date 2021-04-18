@@ -6,12 +6,11 @@ use std::path::PathBuf;
 use std::time::Instant;
 
 use exr::prelude::WritableImage;
-use imgref::ImgRef;
 use tev_client::TevClient;
 
-use crate::common::scene::Color;
 use crate::common::util::lower_process_priority;
-use crate::cpu::{CpuRenderer, CpuRenderSettings, PixelResult, PrintProgress, StopCondition, Strategy, CombinedProgress};
+use crate::cpu::{CombinedProgress, CpuRenderer, CpuRenderSettings, PrintProgress, StopCondition, Strategy};
+use crate::images::{to_discrete_image, to_exr_image};
 use crate::tev::TevProgress;
 
 pub mod common;
@@ -19,6 +18,7 @@ pub mod cpu;
 
 mod demos;
 mod tev;
+mod images;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     lower_process_priority();
@@ -34,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         progress_handler: CombinedProgress::new(
             PrintProgress,
-            TevProgress::new("test", TevClient::spawn_path_default()?)
+            TevProgress::new("test", TevClient::spawn_path_default()?),
         ),
     };
     let info = format!("{:#?}\n\n{:#?}", &renderer.settings, scene);
@@ -47,17 +47,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Render took {:?}s", (Instant::now() - start).as_secs_f32());
 
     let (image_discrete, _) = to_discrete_image(image.as_ref());
+    let image_exr = to_exr_image(image.as_ref());
 
     let output_paths = [PathBuf::from("ignored/output"), pick_output_file_path()?];
     for output_path in output_paths.iter() {
         println!("Saving output to {:?}", output_path);
 
         fs::write(output_path.with_extension("txt"), info.as_bytes())?;
-
-        save_exr_image(image.as_ref(), output_path.with_extension("exr"))?;
-
-        image_discrete
-            .save(output_path.with_extension("png"))?;
+        image_exr.write().to_file(output_path.with_extension("exr"))?;
+        image_discrete.save(output_path.with_extension("png"))?;
     }
 
     Ok(())
@@ -79,55 +77,4 @@ fn pick_output_file_path() -> io::Result<PathBuf> {
     let next_int = max_int? + 1;
     let path = ["ignored", "output", &next_int.to_string()].iter().collect();
     Ok(path)
-}
-
-type DiscreteImage = image::ImageBuffer<image::Rgb<u8>, Vec<u8>>;
-
-/// Convert the given image to a format suitable for saving to a png file.
-/// The first return Image is the image itself, the second Image shows where values had to be clipped
-/// to fit into the image format .
-pub fn to_discrete_image(image: ImgRef<PixelResult>) -> (DiscreteImage, DiscreteImage) {
-    let mut result = DiscreteImage::new(image.width() as u32, image.height() as u32);
-    let mut clipped = DiscreteImage::new(image.width() as u32, image.height() as u32);
-
-    let max = palette::Srgb::new(1.0, 1.0, 1.0).into_linear();
-
-    for (x, y, p) in result.enumerate_pixels_mut() {
-        let linear: Color = image[(x, y)].color;
-
-        let srgb = palette::Srgb::from_linear(linear);
-        let data = srgb.into_format();
-
-        *p = image::Rgb([data.red, data.green, data.blue]);
-        clipped[(x, y)] = image::Rgb([
-            if linear.red > max.red { 255 } else { 0 },
-            if linear.green > max.green { 255 } else { 0 },
-            if linear.blue > max.blue { 255 } else { 0 },
-        ]);
-    }
-
-    (result, clipped)
-}
-
-fn save_exr_image(image: ImgRef<PixelResult>, path: impl AsRef<std::path::Path>) -> exr::error::Result<()> {
-    //TODO add channels for relative variance when we figure out how to achieve that in exr
-    let channels = exr::image::SpecificChannels::build()
-        .with_channel("R")
-        .with_channel("G")
-        .with_channel("B")
-        .with_channel("var0-R")
-        .with_channel("var1-G")
-        .with_channel("var2-B")
-        .with_channel("samples")
-        .with_pixel_fn(|exr::math::Vec2(x, y)| {
-            let p = image[(x, y)];
-            (
-                p.color.red, p.color.green, p.color.blue,
-                p.variance.red, p.variance.green, p.variance.blue,
-                p.samples
-            )
-        });
-
-    let img = exr::image::Image::from_channels((image.width(), image.height()), channels);
-    img.write().to_file(path)
 }
