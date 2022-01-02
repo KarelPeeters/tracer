@@ -27,19 +27,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let renderer = CpuRenderer {
         settings: CpuRenderSettings {
-            stop_condition: StopCondition::SampleCount(10),
+            stop_condition: StopCondition::SampleCount(1000),
             max_bounces: 8,
             anti_alias: true,
             strategy: Strategy::SampleLights,
         },
-        progress_handler: CombinedProgress::new(
+        progress_handler: /*CombinedProgress::new(*/
             PrintProgress,
-            TevProgress::new("test", TevClient::spawn_path_default()?),
-        ),
+            //TevProgress::new("test", TevClient::spawn_path_default()?),
+        //),
     };
     let info = format!("{:#?}\n\n{:#?}", &renderer.settings, scene);
 
-    let div = 1;
+    let div = 8;
     let (width, height) = (1920 / div, 1080 / div);
 
     let start = Instant::now();

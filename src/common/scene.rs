@@ -40,6 +40,8 @@ pub struct Material {
 pub struct Medium {
     pub index_of_refraction: f32,
     pub volumetric_color: Color,
+    pub scatter_average_dist: Option<f32>,
+    pub scatter_g: f32,
 }
 
 #[derive(Debug)]

@@ -9,6 +9,7 @@ use rand_distr::UnitSphere;
 
 use crate::common::math::{Norm, Point2, Point3, Transform, Unit, Vec2, Vec3};
 use crate::common::scene::{Object, Shape};
+use std::f32::consts::PI;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Ray {
@@ -175,13 +176,13 @@ impl Intersect for Object {
         let dist = (self.transform.inv() * from).distance_to(Point3::origin());
         let delta = 2.0 * clamp(1.0 / dist, -1.0, 1.0).asin();
 
-        delta * delta / 4.0 / std::f32::consts::PI
+        delta * delta / 4.0 / PI
     }
 
     fn area(&self) -> f32 {
         assert_eq!(self.shape, Shape::Sphere);
 
-        4.0 * std::f32::consts::PI
+        4.0 * PI
     }
 
     fn sample<R: Rng>(&self, rng: &mut R) -> (f32, Point3) {

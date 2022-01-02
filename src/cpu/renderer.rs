@@ -3,12 +3,13 @@ use std::f32;
 
 use rand::distributions::Distribution;
 use rand::Rng;
-use rand_distr::UnitDisc;
+use rand_distr::{UnitDisc, Exp1, UnitSphere};
 
 use crate::common::math::{Norm, Point3, Transform, Unit, Vec2, Vec3};
 use crate::common::scene::{Camera, Color, MaterialType, Medium, Object, Scene};
 use crate::cpu::geometry::{Hit, Intersect, Ray};
 use crate::cpu::stats::ColorVarianceEstimator;
+use std::f32::consts::PI;
 
 #[derive(Debug)]
 pub struct CpuRenderSettings {
@@ -161,56 +162,73 @@ fn trace_ray<R: Rng>(
     }
 
     let (t, result) = if let Some((object, mut hit)) = first_hit(scene, ray) {
-        if let MaterialType::Fixed = object.material.material_type {
-            return object.material.albedo;
-        }
+        //maybe scatter in medium
+        let (scatter_dist, scatter_event) = medium.scatter_average_dist.map(|d| {
+            let dist = rng.sample::<f32, _>(Exp1) * d;
+            (dist, dist < hit.t)
+        }).unwrap_or((f32::NAN, false));
 
-        // figure out the next medium
-        let into = hit.normal.dot(*ray.direction) < 0.0;
-        let next_medium = if into {
-            debug_assert_eq!(medium, object.material.outside);
-            object.material.inside
+        if scatter_event {
+            let (weight, next_direction) = sample_scatter_hg(rng, ray.direction, medium.scatter_g);
+            let next_ray = Ray {
+                start: ray.at(scatter_dist),
+                direction: next_direction
+            };
+
+            let result = trace_ray(scene, strategy, &next_ray, rng, bounces_left - 1, false, medium);
+            (scatter_dist, result * weight)
         } else {
-            hit.normal = -hit.normal;
-            debug_assert_eq!(medium, object.material.inside);
-            object.material.outside
-        };
-
-        // sample the next ray
-        let refract_ratio = medium.index_of_refraction / next_medium.index_of_refraction;
-        let sample = sample_direction(&ray, &hit, object.material.material_type, refract_ratio, rng);
-
-        let mut result = Color::new(0.0, 0.0, 0.0);
-
-        // add the light contributions
-        match strategy {
-            Strategy::Simple => {
-                result += object.material.emission;
+            if let MaterialType::Fixed = object.material.material_type {
+                return object.material.albedo;
             }
-            Strategy::SampleLights => {
-                if specular {
+
+            // figure out the next medium
+            let into = hit.normal.dot(*ray.direction) < 0.0;
+            let next_medium = if into {
+                debug_assert_eq!(medium, object.material.outside);
+                object.material.inside
+            } else {
+                hit.normal = -hit.normal;
+                debug_assert_eq!(medium, object.material.inside);
+                object.material.outside
+            };
+
+            // sample the next ray
+            let refract_ratio = medium.index_of_refraction / next_medium.index_of_refraction;
+            let sample = sample_direction(&ray, &hit, object.material.material_type, refract_ratio, rng);
+
+            let mut result = Color::new(0.0, 0.0, 0.0);
+
+            // add the light contributions
+            match strategy {
+                Strategy::Simple => {
                     result += object.material.emission;
                 }
+                Strategy::SampleLights => {
+                    if specular {
+                        result += object.material.emission;
+                    }
 
-                if sample.diffuse_fraction != 0.0 {
-                    let light_start = hit.point + (*hit.normal * SHADOW_BIAS);
-                    let light_contribution = sample_lights(scene, light_start, medium, rng, &hit);
-                    result += object.material.albedo * light_contribution * sample.diffuse_fraction;
+                    if sample.diffuse_fraction != 0.0 {
+                        let light_start = hit.point + (*hit.normal * SHADOW_BIAS);
+                        let light_contribution = sample_lights(scene, light_start, medium, rng, &hit);
+                        result += object.material.albedo * light_contribution * sample.diffuse_fraction;
+                    }
                 }
             }
+
+            // add the contribution of the next ray
+            let next_ray = Ray {
+                start: hit.point + (*sample.direction * SHADOW_BIAS),
+                direction: sample.direction,
+            };
+            let next_medium = if sample.crosses_surface { next_medium } else { medium };
+            let next_contribution = trace_ray(scene, strategy, &next_ray, rng, bounces_left - 1, sample.specular, next_medium);
+
+            result += object.material.albedo * next_contribution * sample.weight;
+
+            (hit.t, result)
         }
-
-        // add the contribution of the next ray
-        let next_ray = Ray {
-            start: hit.point + (*sample.direction * SHADOW_BIAS),
-            direction: sample.direction,
-        };
-        let next_medium = if sample.crosses_surface { next_medium } else { medium };
-        let next_contribution = trace_ray(scene, strategy, &next_ray, rng, bounces_left - 1, sample.specular, next_medium);
-
-        result += object.material.albedo * next_contribution * sample.weight;
-
-        (hit.t, result)
     } else {
         (f32::INFINITY, scene.sky_emission)
     };
@@ -221,7 +239,7 @@ fn trace_ray<R: Rng>(
 struct SampleInfo {
     /// the direction of the next ray
     direction: Unit<Vec3>,
-    /// the weight associated with the direction sampling, needs to be divided out of the contribution of the next ray
+    /// the weight associated with the direction sampling, needs to be multiplied with the contribution of the next ray
     weight: f32,
 
     /// whether this sample crosses the surface, used to determine the next medium
@@ -276,7 +294,7 @@ fn reflect_direction(vec: Unit<Vec3>, normal: Unit<Vec3>) -> Unit<Vec3> {
 /// Compute the outgoing direction according to
 /// [Snell's law](https://en.wikipedia.org/wiki/Snell%27s_law#Vector_form),
 /// including total internal reflection.
-/// `vec` and `normal` should point in opposite directions.
+/// `vec` and `normal` should point in opposite directions (ie. have a negative dot product).
 fn snells_law(vec: Unit<Vec3>, normal: Unit<Vec3>, r: f32) -> (bool, Unit<Vec3>) {
     let c = -normal.dot(*vec);
     let x = 1.0 - r * r * (1.0 - c * c);
@@ -289,6 +307,25 @@ fn snells_law(vec: Unit<Vec3>, normal: Unit<Vec3>, r: f32) -> (bool, Unit<Vec3>)
         //total internal reflection
         (false, reflect_direction(vec, normal))
     }
+}
+
+/// Sample an outgoing scattering direction according to the Henyey and Greenstein phase function.
+///
+/// `dir` is the incoming direction,
+/// `g` is the asymmetry factor and must be between -1.0 and 1.0 where positive values
+/// indicate forward scattering, and negative values indicate backward scattering.
+///
+/// Returns `(weight, dir)` where `weight` needs to be multiplied with the ray contribution similar to `SampleInfo.weight`.
+fn sample_scatter_hg(rng: &mut impl Rng, dir: Unit<Vec3>, g: f32) -> (f32, Unit<Vec3>) {
+    debug_assert!((0.0..=1.0).contains(&g), "g must be in the range 0.0 .. 1.0");
+
+    let out = Unit::new_unchecked(Vec3::from_slice(&rng.sample(UnitSphere)));
+
+    let cos = dir.dot(*out);
+    let denom = 1.0 + g * g + 2.0 * g * cos;
+    let weight = 1.0 / (4.0 * PI) * (1.0 - g * g) / (denom * denom.sqrt());
+
+    (weight, out)
 }
 
 fn first_hit<'a>(scene: &'a Scene, ray: &Ray) -> Option<(&'a Object, Hit)> {

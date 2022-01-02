@@ -18,6 +18,9 @@ lazy_static! {
     static ref MEDIUM_VACUUM: Medium = Medium {
         index_of_refraction: 1.0,
         volumetric_color: *WHITE,
+        //TODO this is not really vacuum anymore
+        scatter_average_dist: Some(20.0),
+        scatter_g: -0.8
     };
 }
 
@@ -25,6 +28,8 @@ fn medium_glass(volumetric_color: Color) -> Medium {
     Medium {
         index_of_refraction: GLASS_IOR,
         volumetric_color,
+        scatter_average_dist: None,
+        scatter_g: 0.0
     }
 }
 
@@ -146,6 +151,11 @@ pub fn colored_spheres() -> Scene {
             transform: Transform::look_at(
                 Point3::new(0.0, 1.5, 1.0),
                 Point3::new(0.0, 1.0, -5.0),
+
+                /*
+                Point3::new(-0.2, 0.2, -4.0),
+                Point3::new(-0.2, 0.0, -5.0),
+                 */
                 Vec3::y_axis(),
             ),
             medium: *MEDIUM_VACUUM,

@@ -1,13 +1,12 @@
 use std::cmp::min;
-use std::ops::Range;
 
 use imgref::ImgVec;
-use rand::prelude::SliceRandom;
 use rand::thread_rng;
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{ParallelIterator, IntoParallelIterator};
 
 use crate::common::scene::Scene;
 use crate::cpu::renderer::{CpuRenderSettings, PixelResult, RayCamera};
+use rand::prelude::SliceRandom;
 
 pub struct CpuRenderer<P: ProgressHandler> {
     pub settings: CpuRenderSettings,
@@ -28,22 +27,11 @@ pub struct Block {
     pub height: u32,
 }
 
-//TODO write a proper iterator for the coords in Block instead
-//  * iterate over y slower than x!
-//  * be careful about empty x/y ranges!
-//  * write a custom fold and size_hint ugh this is getting annoying?
-impl Block {
-    fn x_range(self) -> Range<u32> {
-        self.x..(self.x + self.width)
-    }
-
-    fn y_range(self) -> Range<u32> {
-        self.y..(self.y + self.height)
-    }
-}
-
 fn split_into_blocks(width: u32, height: u32) -> Vec<Block> {
-    let block_size: u32 = 16;
+    //TODO do some cool space-filling curve or something here, maybe even just a spiral
+    //  having an order to this requires changing the rayon code to actually process things in order though
+
+    let block_size: u32 = 8;
 
     let mut result = Vec::new();
     for x in (0..width).step_by(block_size as usize) {
@@ -57,6 +45,7 @@ fn split_into_blocks(width: u32, height: u32) -> Vec<Block> {
         }
     }
 
+    result.shuffle(&mut thread_rng());
     result
 }
 
@@ -90,19 +79,28 @@ impl<P: ProgressHandler> CpuRenderer<P> {
         let settings = self.settings;
 
         let camera = RayCamera::new(&scene.camera, settings.anti_alias, width, height);
-        let mut blocks = split_into_blocks(width, height);
-        blocks.shuffle(&mut thread_rng());
+
+        let blocks = split_into_blocks(width, height);
+        let block_count = blocks.len();
+
+        let (block_sender, block_receiver) =
+            crossbeam::channel::unbounded::<Block>();
+        for block in blocks {
+            block_sender.send(block).expect("Failed to send block");
+        }
+        drop(block_sender);
 
         // render everything on a thread pool, send data to the channel
-        blocks.par_iter().panic_fuse().for_each_init(thread_rng, |rng, block: &Block| {
+        (0..block_count).into_par_iter().panic_fuse().for_each_init(thread_rng, |rng, _| {
+            let block = block_receiver.recv().expect("Failed to receive block");
             let mut data = Vec::new();
-            for y in block.y_range() {
-                for x in block.x_range() {
+            for y in block.y..(block.y + block.height) {
+                for x in block.x..(block.x + block.width) {
                     data.push(settings.calculate_pixel(scene, &camera, rng, x, y))
                 }
             }
 
-            sender.send((*block, data)).expect("Failed to send block result over channel");
+            sender.send((block, data)).expect("Failed to send block result over channel");
         });
 
         drop(sender);
@@ -130,7 +128,7 @@ impl ProgressHandler for PrintProgress {
         PrintProgressState {
             total_pixels: (width as u64) * (height as u64),
             finished_pixels: 0,
-            prev_printed: f32::NEG_INFINITY,
+            prev_printed: 0.0,
         }
     }
 
