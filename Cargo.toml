@@ -2,13 +2,13 @@
 name = "tracer"
 version = "0.1.0"
 authors = ["Karel <karel.peeters.leuven@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 # TODO go though deps, update, remove entirely, remove features
 [dependencies]
 image = { version = "0.23.14", default-features = false, features = ["png"] }
 palette = "0.6.0"
-rand = "0.8.4"
+rand = { version = "0.8.4", features = ["small_rng"] }
 rand_distr = "0.4.2"
 rayon = "1.5.1"
 wavefront_obj = "10.0.0"

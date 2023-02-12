@@ -1,6 +1,6 @@
 use std::cmp::max;
-use std::fmt::{Debug, Formatter};
 use std::fmt;
+use std::fmt::Debug;
 use std::ops::{Add, Deref, Div, Mul, Neg, Sub};
 
 pub trait Norm: Div<f32, Output=Self> + Sized + Copy + Debug {
@@ -166,6 +166,10 @@ impl Point3 {
     pub fn max(self, other: Point3) -> Point3 {
         Point3::new(self.x.max(other.x), self.y.max(other.y), self.z.max(other.z))
     }
+
+    pub fn middle(self, other: Point3) -> Point3 {
+        Point3::new((self.x + other.x) / 2.0, (self.y + other.y) / 2.0, (self.z + other.z) / 2.0)
+    }
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
@@ -298,11 +302,10 @@ impl Sub<Point2> for Point2 {
     }
 }
 
-
 /// A matrix that behaves like a 4x4 matrix with the last row fixed as [0, 0, 0, 1]
 #[derive(Copy, Clone, PartialEq)]
 struct Matrix4 {
-    rows: [[f32; 4]; 4]
+    rows: [[f32; 4]; 4],
 }
 
 impl Default for Matrix4 {
@@ -317,7 +320,7 @@ impl Default for Matrix4 {
 }
 
 impl Debug for Matrix4 {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if f.alternate() {
             let mut max_size_per_col = [0; 4];
             for c in 0..4 {
@@ -488,7 +491,6 @@ impl Transform {
     }
 }
 
-
 impl Mul<Transform> for Transform {
     type Output = Self;
 
@@ -544,26 +546,42 @@ impl Neg for Angle {
 }
 
 impl Debug for Angle {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Angle({} = {}°)", self.radians, self.radians.to_degrees())
     }
 }
 
 #[derive(Debug, Copy, Clone)]
-pub enum Axis {
+pub enum Axis3 {
     X,
     Y,
     Z,
 }
 
-impl Axis {
-    pub const ALL: [Axis; 3] = [Axis::X, Axis::Y, Axis::Z];
+impl Axis3 {
+    pub const ALL: [Axis3; 3] = [Axis3::X, Axis3::Y, Axis3::Z];
+}
 
-    pub fn value(self, point: Point3) -> f32 {
-        match self {
-            Axis::X => point.x,
-            Axis::Y => point.y,
-            Axis::Z => point.z,
+pub trait Axis3Owner {
+    fn get(self, axis: Axis3) -> f32;
+}
+
+impl Axis3Owner for Point3 {
+    fn get(self, axis: Axis3) -> f32 {
+        match axis {
+            Axis3::X => self.x,
+            Axis3::Y => self.y,
+            Axis3::Z => self.z,
+        }
+    }
+}
+
+impl Axis3Owner for Vec3 {
+    fn get(self, axis: Axis3) -> f32 {
+        match axis {
+            Axis3::X => self.x,
+            Axis3::Y => self.y,
+            Axis3::Z => self.z,
         }
     }
 }

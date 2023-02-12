@@ -23,6 +23,7 @@ mod images;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     lower_process_priority();
+    // rayon::ThreadPoolBuilder::new().num_threads(1).build_global().unwrap();
 
     let scene = demos::random_tiles();
 

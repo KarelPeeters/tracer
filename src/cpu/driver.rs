@@ -7,7 +7,7 @@ use rand::thread_rng;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::common::scene::Scene;
-use crate::cpu::octree::Octree;
+use crate::cpu::accel::octree::Octree;
 use crate::cpu::renderer::{CpuRenderSettings, PixelResult, RayCamera};
 
 pub struct CpuRenderer<P: ProgressHandler> {
@@ -63,10 +63,17 @@ fn split_into_blocks(width: u32, height: u32) -> Vec<Block> {
 
 impl<P: ProgressHandler> CpuRenderer<P> {
     pub fn render(self, scene: &Scene, width: u32, height: u32) -> ImgVec<PixelResult> {
+        // TODO fix BVH general bug
+        // println!("Building BVH");
+        // let accel = BVH::new(&scene.objects);
+
         println!("Building octree");
-        let octree = Octree::new(scene.objects.clone(), self.settings.octree_max_flat_size);
-        println!("{:?}", octree);
-        println!("Octree len/depth: {:?}, original objects: {}", octree.len_depth(), scene.objects.len());
+        let accel = Octree::new(&scene.objects, self.settings.octree_max_flat_size);
+        println!("{:?}", accel);
+        println!("Octree len/depth: {:?}, original objects: {}", accel.len_depth(), scene.objects.len());
+
+        // TOD noaccel and octree look the same but strange, didn't no-accel look better in the past?
+        // let accel = NoAccel;
 
         let mut progress_handler = self.progress_handler.init(width, height);
 
@@ -104,7 +111,7 @@ impl<P: ProgressHandler> CpuRenderer<P> {
             let mut data = Vec::new();
             for y in block.y_range() {
                 for x in block.x_range() {
-                    data.push(settings.calculate_pixel(scene, &octree, &camera, rng, x, y))
+                    data.push(settings.calculate_pixel(scene, &accel, &camera, rng, x, y))
                 }
             }
 

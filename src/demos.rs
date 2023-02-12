@@ -1,11 +1,13 @@
 use std::fs::read_to_string;
 use std::marker::PhantomData;
-use rand::rngs::SmallRng;
-use rand::{Rng, SeedableRng};
 
+use rand::{Rng, SeedableRng};
+use rand::rngs::SmallRng;
+use rand_distr::Distribution;
+use rand_distr::UnitSphere;
 use wavefront_obj::obj;
 
-use crate::common::math::{Angle, Point3, Transform, Vec3};
+use crate::common::math::{Angle, Point3, Transform, Unit, Vec3};
 use crate::common::scene::{Camera, Color, Material, MaterialType, Medium, Object, Scene, Shape};
 use crate::common::util::obj_to_triangles;
 
@@ -190,7 +192,7 @@ pub fn cube() -> Scene {
 
 pub fn random_tiles() -> Scene {
     let mut objects = vec![];
-    let mut rng = SmallRng::seed_from_u64(0);
+    let rng = &mut SmallRng::seed_from_u64(0);
 
     objects.push(Object {
         shape: Shape::Sphere,
@@ -198,16 +200,25 @@ pub fn random_tiles() -> Scene {
         transform: Transform::translation(Vec3::new(0.0, 0.0, 15.0)),
     });
 
-    for x in -10..=10 {
-        for y in -10..=10 {
-            let trans = Vec3::new(x as f32 - 0.5, y as f32 - 0.5, rng.gen_range(-2.0..2.0));
+    for _ in 0..1000 {
+        let trans = Vec3::new(
+            rng.gen_range(-10.0..10.0),
+            rng.gen_range(-10.0..10.0),
+            rng.gen_range(-10.0..10.0),
+        );
 
-            objects.push(Object {
-                shape: Shape::Square,
-                material: material_diffuse(WHITE),
-                transform: Transform::translation(trans),
-            });
-        }
+        let rot_axis = Unit::new_unchecked(Vec3::from_slice(&UnitSphere.sample(rng)));
+        let rot_angle = Angle::degrees(rng.gen_range(0.0..360.0));
+
+        let scale = rng.gen_range(0.5..2.0);
+
+        let transform = Transform::translation(trans) * Transform::rotation(rot_axis, rot_angle) * Transform::scaling(scale);
+
+        objects.push(Object {
+            shape: Shape::Square,
+            material: material_diffuse(WHITE),
+            transform,
+        });
     }
 
     Scene {

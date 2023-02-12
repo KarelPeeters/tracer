@@ -9,6 +9,7 @@ use rand_distr::UnitSphere;
 
 use crate::common::math::{Norm, Point2, Point3, Transform, Unit, Vec2, Vec3};
 use crate::common::scene::{Object, Shape};
+use crate::cpu::accel::ObjectId;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Ray {
@@ -37,7 +38,7 @@ impl Mul<&Ray> for Transform {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Hit {
     pub t: f32,
     pub point: Point3,
@@ -45,8 +46,8 @@ pub struct Hit {
 }
 
 #[derive(Debug)]
-pub struct ObjectHit<'a> {
-    pub object: &'a Object,
+pub struct ObjectHit {
+    pub id: ObjectId,
     pub hit: Hit,
 }
 
@@ -60,8 +61,8 @@ impl Hit {
     }
 }
 
-impl ObjectHit<'_> {
-    pub fn closest<'a>(left: ObjectHit<'a>, right: ObjectHit<'a>) -> ObjectHit<'a> {
+impl ObjectHit {
+    pub fn closest(left: ObjectHit, right: ObjectHit) -> ObjectHit {
         if left.hit.t < right.hit.t {
             left
         } else {
@@ -69,7 +70,7 @@ impl ObjectHit<'_> {
         }
     }
 
-    pub fn closest_option<'a>(left: Option<ObjectHit<'a>>, right: Option<ObjectHit<'a>>) -> Option<ObjectHit<'a>> {
+    pub fn closest_option(left: Option<ObjectHit>, right: Option<ObjectHit>) -> Option<ObjectHit> {
         match (left, right) {
             (Some(result), None) | (None, Some(result)) => Some(result),
             (Some(left), Some(right)) => Some(Self::closest(left, right)),

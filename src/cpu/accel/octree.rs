@@ -1,29 +1,30 @@
 use std::cmp::max;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Display, Formatter};
 use std::ops::Range;
 
 use decorum::N32;
 use itertools::Itertools;
 
 use crate::common::aabb::AxisBox;
-use crate::common::math::Axis;
+use crate::common::math::{Axis3, Axis3Owner};
 use crate::common::scene::Object;
+use crate::cpu::accel::{Accel, first_hit, ObjectId};
 use crate::cpu::geometry::{ObjectHit, Ray};
-use crate::cpu::renderer::first_hit;
 
+// TODO fix wrongly returned indices that cause light to be overactive
 pub struct Octree {
-    objects: Vec<Object>,
-    indices: Vec<usize>,
+    ids: Vec<ObjectId>,
     nodes: Vec<Node>,
+
     node_root: usize,
 }
 
-struct Builder {
+struct Builder<'a> {
     max_flat_size: usize,
+    objects: &'a [Object],
 
-    all_objects: Vec<Object>,
-    all_indices: Vec<usize>,
-    all_nodes: Vec<Node>,
+    ids: Vec<ObjectId>,
+    nodes: Vec<Node>,
 }
 
 // TODO add per-node AABB for quick check beforehand?
@@ -32,7 +33,7 @@ struct Builder {
 enum Node {
     Flat(Range<usize>),
     Split {
-        axis: Axis,
+        axis: Axis3,
         value: f32,
         node_lower: usize,
         node_higher: usize,
@@ -40,27 +41,24 @@ enum Node {
 }
 
 impl Octree {
-    pub fn new(objects: Vec<Object>, max_flat_size: usize) -> Self {
+    pub fn new(objects: &[Object], max_flat_size: usize) -> Self {
+        let objects_len = objects.len();
+
         let mut builder = Builder {
             max_flat_size,
-            all_objects: objects,
-            all_indices: vec![],
-            all_nodes: vec![],
+            objects,
+            ids: vec![],
+            nodes: vec![],
         };
 
-        let indices = (0..builder.all_objects.len()).collect_vec();
-        let node_root = builder.build_node(&indices);
+        let ids = (0..objects_len).map(ObjectId::new).collect_vec();
+        let node_root = builder.build_node(&ids);
 
         Octree {
-            objects: builder.all_objects,
-            nodes: builder.all_nodes,
-            indices: builder.all_indices,
+            nodes: builder.nodes,
+            ids: builder.ids,
             node_root,
         }
-    }
-
-    pub fn first_hit(&self, ray: &Ray) -> Option<ObjectHit> {
-        self.nodes[self.node_root].first_hit(self, ray, f32::INFINITY)
     }
 
     pub fn len_depth(&self) -> (usize, usize) {
@@ -79,27 +77,33 @@ impl Octree {
     }
 }
 
-impl Builder {
-    fn build_flat_node(&mut self, indices: &[usize]) -> usize {
-        let start = self.all_indices.len();
-        self.all_indices.extend(indices);
-        let end = self.all_indices.len();
+impl Accel for Octree {
+    fn first_hit(&self, objects: &[Object], ray: &Ray) -> Option<ObjectHit> {
+        self.nodes[self.node_root].first_hit(self, objects, ray, f32::INFINITY)
+    }
+}
+
+impl Builder<'_> {
+    fn build_flat_node(&mut self, ids: &[ObjectId]) -> usize {
+        let start = self.ids.len();
+        self.ids.extend(ids);
+        let end = self.ids.len();
         let node = Node::Flat(start..end);
-        self.all_nodes.push(node);
-        self.all_nodes.len() - 1
+        self.nodes.push(node);
+        self.nodes.len() - 1
     }
 
-    fn build_node(&mut self, indices: &[usize]) -> usize {
-        if indices.len() <= self.max_flat_size {
-            return self.build_flat_node(indices);
+    fn build_node(&mut self, ids: &[ObjectId]) -> usize {
+        if ids.len() <= self.max_flat_size {
+            return self.build_flat_node(ids);
         }
 
         let mut best_axis = None;
         let mut best_split = f32::NAN;
         let mut best_cost = usize::MAX;
 
-        for axis in [Axis::X, Axis::Y, Axis::Z] {
-            if let Some((split, cost)) = self.best_axis_split(indices, axis) {
+        for axis in [Axis3::X, Axis3::Y, Axis3::Z] {
+            if let Some((split, cost)) = self.best_axis_split(ids, axis) {
                 if best_axis.is_none() || cost < best_cost {
                     best_split = split;
                     best_axis = Some(axis);
@@ -109,42 +113,42 @@ impl Builder {
         }
 
         if let Some(axis) = best_axis {
-            let (lower, higher) = self.split_objects(indices, axis, best_split);
+            let (lower, higher) = self.split_objects(ids, axis, best_split);
             let node = Node::Split {
                 axis,
                 value: best_split,
                 node_lower: self.build_node(&lower),
                 node_higher: self.build_node(&higher),
             };
-            self.all_nodes.push(node);
-            self.all_nodes.len() - 1
+            self.nodes.push(node);
+            self.nodes.len() - 1
         } else {
-            self.build_flat_node(indices)
+            self.build_flat_node(ids)
         }
     }
 
-    fn split_objects(&self, indices: &[usize], axis: Axis, split: f32) -> (Vec<usize>, Vec<usize>) {
+    fn split_objects(&self, ids: &[ObjectId], axis: Axis3, split: f32) -> (Vec<ObjectId>, Vec<ObjectId>) {
         let mut lower = vec![];
         let mut higher = vec![];
-        for &index in indices {
-            let b = AxisBox::for_object(&self.all_objects[index]);
-            if axis.value(b.low) <= split {
-                lower.push(index);
+        for &id in ids {
+            let b = AxisBox::for_object(&self.objects[id.index]);
+            if b.low.get(axis) <= split {
+                lower.push(id);
             }
-            if axis.value(b.high) >= split {
-                higher.push(index);
+            if b.high.get(axis) >= split {
+                higher.push(id);
             }
         }
         (lower, higher)
     }
 
-    fn best_axis_split(&self, indices: &[usize], axis: Axis) -> Option<(f32, usize)> {
+    fn best_axis_split(&self, ids: &[ObjectId], axis: Axis3) -> Option<(f32, usize)> {
         // collect edges
         let mut edges = vec![];
-        for &i in indices {
-            let b = AxisBox::for_object(&self.all_objects[i]);
-            edges.push(N32::from_inner(axis.value(b.low)));
-            edges.push(N32::from_inner(axis.value(b.high)));
+        for &id in ids {
+            let b = AxisBox::for_object(&self.objects[id.index]);
+            edges.push(N32::from_inner(b.low.get(axis)));
+            edges.push(N32::from_inner(b.high.get(axis)));
         }
 
         edges.sort_unstable();
@@ -165,12 +169,12 @@ impl Builder {
 
             let mut lower_count = 0;
             let mut higher_count = 0;
-            for &i in indices {
-                let b = AxisBox::for_object(&self.all_objects[i]);
-                if axis.value(b.low) <= split {
+            for &id in ids {
+                let b = AxisBox::for_object(&self.objects[id.index]);
+                if b.low.get(axis) <= split {
                     lower_count += 1;
                 }
-                if axis.value(b.high) >= split {
+                if b.high.get(axis) >= split {
                     higher_count += 1;
                 }
             }
@@ -183,7 +187,7 @@ impl Builder {
         }
 
         // if we didn't manage to separate anything we can't count this as a split
-        if best_cost == indices.len() {
+        if best_cost == ids.len() {
             return None;
         }
 
@@ -192,19 +196,24 @@ impl Builder {
 }
 
 impl Node {
-    fn first_hit<'a>(&self, octree: &'a Octree, ray: &Ray, mut t_max: f32) -> Option<ObjectHit<'a>> {
+    fn first_hit<'a>(&self, octree: &'a Octree, objects: &[Object], ray: &Ray, mut t_max: f32) -> Option<ObjectHit> {
         match self {
             Node::Flat(range) => {
-                let objects = range.clone().map(|i| &octree.objects[octree.indices[i]]);
-                first_hit(objects, ray)
+                let objects = range.clone().map(|i| &objects[octree.ids[i].index]);
+                first_hit(objects, ray).map(|(index, hit)| {
+                    ObjectHit {
+                        id: octree.ids[range.start + index],
+                        hit,
+                    }
+                })
             }
             &Node::Split { axis, value, node_lower, node_higher } => {
-                let start_in_lower = axis.value(ray.start) <= value;
-                let end_in_lower = axis.value(ray.at(t_max)) <= value;
+                let start_in_lower = ray.start.get(axis) <= value;
+                let end_in_lower = ray.at(t_max).get(axis) <= value;
 
                 // compute start hit
                 let start_node = if start_in_lower { node_lower } else { node_higher };
-                let start_hit = octree.nodes[start_node].first_hit(octree, ray, t_max);
+                let start_hit = octree.nodes[start_node].first_hit(octree, objects, ray, t_max);
 
                 if let Some(hit) = start_hit.as_ref() {
                     t_max = f32::min(t_max, hit.hit.t);
@@ -213,7 +222,7 @@ impl Node {
                 // compute end hit if end is different from start
                 if end_in_lower != start_in_lower {
                     let end_node = if end_in_lower { node_lower } else { node_higher };
-                    let end_hit = octree.nodes[end_node].first_hit(octree, ray, t_max);
+                    let end_hit = octree.nodes[end_node].first_hit(octree, objects, ray, t_max);
                     ObjectHit::closest_option(start_hit, end_hit)
                 } else {
                     start_hit
@@ -223,7 +232,7 @@ impl Node {
     }
 }
 
-impl Debug for Octree {
+impl Display for Octree {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "Octree {{")?;
         self.nodes[self.node_root].debug_fmt(f, self, 1)?;
@@ -247,5 +256,12 @@ impl Node {
             }
         }
         Ok(())
+    }
+}
+
+impl Debug for Octree {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        let (len, depth) = self.len_depth();
+        writeln!(f, "Octree(ids={}, len={}, depth={}, nodes={})", self.ids.len(), len, depth, self.nodes.len())
     }
 }
