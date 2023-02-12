@@ -5,17 +5,11 @@ use std::ops::Range;
 use decorum::N32;
 use itertools::Itertools;
 
-use crate::common::math::Point3;
-use crate::common::scene::{Object, Shape};
+use crate::common::aabb::AxisBox;
+use crate::common::math::Axis;
+use crate::common::scene::Object;
 use crate::cpu::geometry::{ObjectHit, Ray};
 use crate::cpu::renderer::first_hit;
-
-/// Axis-aligned bounding box.
-#[derive(Debug, Copy, Clone)]
-pub struct AABBox {
-    pub low: Point3,
-    pub high: Point3,
-}
 
 pub struct Octree {
     objects: Vec<Object>,
@@ -43,13 +37,6 @@ enum Node {
         node_lower: usize,
         node_higher: usize,
     },
-}
-
-#[derive(Debug, Copy, Clone)]
-enum Axis {
-    X,
-    Y,
-    Z,
 }
 
 impl Octree {
@@ -140,7 +127,7 @@ impl Builder {
         let mut lower = vec![];
         let mut higher = vec![];
         for &index in indices {
-            let b = object_aabb(&self.all_objects[index]);
+            let b = AxisBox::for_object(&self.all_objects[index]);
             if axis.value(b.low) <= split {
                 lower.push(index);
             }
@@ -155,7 +142,7 @@ impl Builder {
         // collect edges
         let mut edges = vec![];
         for &i in indices {
-            let b = object_aabb(&self.all_objects[i]);
+            let b = AxisBox::for_object(&self.all_objects[i]);
             edges.push(N32::from_inner(axis.value(b.low)));
             edges.push(N32::from_inner(axis.value(b.high)));
         }
@@ -179,7 +166,7 @@ impl Builder {
             let mut lower_count = 0;
             let mut higher_count = 0;
             for &i in indices {
-                let b = object_aabb(&self.all_objects[i]);
+                let b = AxisBox::for_object(&self.all_objects[i]);
                 if axis.value(b.low) <= split {
                     lower_count += 1;
                 }
@@ -233,61 +220,6 @@ impl Node {
                 }
             }
         }
-    }
-}
-
-impl Axis {
-    fn value(self, point: Point3) -> f32 {
-        match self {
-            Axis::X => point.x,
-            Axis::Y => point.y,
-            Axis::Z => point.z,
-        }
-    }
-}
-
-impl AABBox {
-    pub fn new(low: Point3, high: Point3) -> Self {
-        // TODO add eps padding in here automatically?
-        let delta = high - low;
-        assert!(delta.x >= 0.0 && delta.y >= 0.0 && delta.z >= 0.0);
-        Self { low, high }
-    }
-
-    pub fn for_each_corner(self, mut f: impl FnMut(Point3)) {
-        f(self.low);
-        f(Point3::new(self.high.x, self.low.y, self.low.z));
-        f(Point3::new(self.low.x, self.high.y, self.low.z));
-        f(Point3::new(self.low.x, self.low.y, self.high.z));
-        f(Point3::new(self.high.x, self.high.y, self.low.z));
-        f(Point3::new(self.high.x, self.low.y, self.high.z));
-        f(Point3::new(self.low.x, self.high.y, self.high.z));
-        f(self.high);
-    }
-}
-
-fn object_aabb(object: &Object) -> AABBox {
-    const INF: f32 = f32::INFINITY;
-    let mut low = Point3::new(INF, INF, INF);
-    let mut high = Point3::new(-INF, -INF, -INF);
-
-    shape_aabb(object.shape).for_each_corner(|p_orig| {
-        let p_trans = object.transform * p_orig;
-        low = low.min(p_trans);
-        high = high.max(p_trans);
-    });
-
-    AABBox::new(low, high)
-}
-
-fn shape_aabb(shape: Shape) -> AABBox {
-    const INF: f32 = f32::INFINITY;
-    match shape {
-        Shape::Sphere => AABBox::new(Point3::new(-1.0, -1.0, -1.0), Point3::new(1.0, 1.0, 1.0)),
-        Shape::Plane => AABBox::new(Point3::new(-INF, -INF, 0.0), Point3::new(INF, INF, 0.0)),
-        Shape::Triangle => AABBox::new(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 0.0)),
-        Shape::Square => AABBox::new(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 0.0)),
-        Shape::Cylinder => AABBox::new(Point3::new(-1.0, -INF, -1.0), Point3::new(1.0, INF, 1.0)),
     }
 }
 

@@ -548,3 +548,22 @@ impl Debug for Angle {
         write!(f, "Angle({} = {}°)", self.radians, self.radians.to_degrees())
     }
 }
+
+#[derive(Debug, Copy, Clone)]
+pub enum Axis {
+    X,
+    Y,
+    Z,
+}
+
+impl Axis {
+    pub const ALL: [Axis; 3] = [Axis::X, Axis::Y, Axis::Z];
+
+    pub fn value(self, point: Point3) -> f32 {
+        match self {
+            Axis::X => point.x,
+            Axis::Y => point.y,
+            Axis::Z => point.z,
+        }
+    }
+}
