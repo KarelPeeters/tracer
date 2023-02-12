@@ -737,7 +737,6 @@ dependencies = [
  "image",
  "imgref",
  "itertools",
- "lazy_static",
  "num_cpus",
  "palette",
  "rand",

@@ -1,78 +1,68 @@
 use std::f32::consts::PI;
-
-use lazy_static::lazy_static;
-
-use crate::common::math::{Point3, Transform, Vec3, Angle};
-use crate::common::scene::{Camera, Color, Material, MaterialType, Medium, Object, Scene, Shape};
-use wavefront_obj::obj;
 use std::fs::read_to_string;
+use std::marker::PhantomData;
+
+use wavefront_obj::obj;
+
+use crate::common::math::{Angle, Point3, Transform, Vec3};
+use crate::common::scene::{Camera, Color, Material, MaterialType, Medium, Object, Scene, Shape};
 use crate::common::util::obj_to_triangles;
 
 const VACUUM_IOR: f32 = 1.0;
 const GLASS_IOR: f32 = 1.52;
 
-lazy_static! {
-    static ref BLACK: Color = Color::new(0.0, 0.0, 0.0);
-    static ref WHITE: Color = Color::new(1.0, 1.0, 1.0);
+const BLACK: Color = Color { red: 0.0, green: 0.0, blue: 0.0, standard: PhantomData };
+const WHITE: Color = Color { red: 1.0, green: 1.0, blue: 1.0, standard: PhantomData };
 
-    static ref MEDIUM_VACUUM: Medium = Medium {
-        index_of_refraction: 1.0,
-        volumetric_color: *WHITE,
-    };
-}
+const VACUUM: Medium = Medium { index_of_refraction: 1.0, volumetric_color: WHITE };
 
-fn medium_glass(volumetric_color: Color) -> Medium {
+pub fn medium_glass(volumetric_color: Color) -> Medium {
     Medium {
         index_of_refraction: GLASS_IOR,
         volumetric_color,
     }
 }
 
-fn material_diffuse(albedo: Color) -> Material {
+pub fn material_diffuse(albedo: Color) -> Material {
     Material {
         material_type: MaterialType::Diffuse,
 
         albedo,
-        emission: *BLACK,
+        emission: BLACK,
 
-        inside: *MEDIUM_VACUUM,
-        outside: *MEDIUM_VACUUM,
+        inside: VACUUM,
+        outside: VACUUM,
     }
 }
 
-fn material_mixed(albedo: Color, diffuse_fraction: f32) -> Material {
+pub fn material_mixed(albedo: Color, diffuse_fraction: f32) -> Material {
     assert!((0.0..=1.0).contains(&diffuse_fraction));
     Material {
         material_type: MaterialType::DiffuseMirror(diffuse_fraction),
-
         albedo,
-        emission: *BLACK,
-
-        inside: *MEDIUM_VACUUM,
-        outside: *MEDIUM_VACUUM,
+        emission: BLACK,
+        inside: VACUUM,
+        outside: VACUUM,
     }
 }
 
-fn material_glass(volumetric_color: Color) -> Material {
+pub fn material_glass(volumetric_color: Color) -> Material {
     Material {
         material_type: MaterialType::Transparent,
-
-        albedo: *WHITE,
-        emission: *BLACK,
-
+        albedo: WHITE,
+        emission: BLACK,
         inside: medium_glass(volumetric_color),
-        outside: *MEDIUM_VACUUM,
+        outside: VACUUM,
     }
 }
 
-fn material_light(emission: Color) -> Material {
+pub fn material_light(emission: Color) -> Material {
     Material {
         material_type: MaterialType::Diffuse,
-        albedo: *BLACK,
+        albedo: BLACK,
         emission,
-
-        inside: *MEDIUM_VACUUM,
-        outside: *MEDIUM_VACUUM,
+        inside: VACUUM,
+        outside: VACUUM,
     }
 }
 
@@ -93,7 +83,7 @@ pub fn single_red_sphere() -> Scene {
                 shape: Shape::Sphere,
                 material: material_light(Color::new(1.0, 1.0, 1.0) * 1_000.0),
                 transform: Transform::translation(Vec3::new(10.0, 10.0, -5.0)),
-            }
+            },
         ],
         sky_emission: color_by_name("gray"),
         camera: Camera {
@@ -103,7 +93,7 @@ pub fn single_red_sphere() -> Scene {
                 Point3::new(0.0, 1.0, 0.0),
                 Vec3::y_axis(),
             ),
-            medium: *MEDIUM_VACUUM,
+            medium: VACUUM,
         },
     }
 }
@@ -148,7 +138,7 @@ pub fn colored_spheres() -> Scene {
                 Point3::new(0.0, 1.0, -5.0),
                 Vec3::y_axis(),
             ),
-            medium: *MEDIUM_VACUUM,
+            medium: VACUUM,
         },
     }
 }
@@ -183,7 +173,7 @@ pub fn cube() -> Scene {
                 Point3::new(0.0, 1.0, 0.0),
                 Vec3::y_axis(),
             ),
-            medium: *MEDIUM_VACUUM,
+            medium: VACUUM,
         },
     }
 }
