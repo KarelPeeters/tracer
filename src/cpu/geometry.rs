@@ -104,6 +104,15 @@ fn triangle_intersect(ray: &Ray) -> Option<Hit> {
     })
 }
 
+fn square_intersect(ray: &Ray) -> Option<Hit> {
+    plane_intersect(ray).filter(|hit| {
+        let x = hit.point.x;
+        let y = hit.point.y;
+        (0.0..1.0).contains(&x) && (0.0..1.0).contains(&y)
+    })
+}
+
+
 fn cylinder_intersect(ray: &Ray) -> Option<Hit> {
     //work in xz plane
     let start = Point2::new(ray.start.x, ray.start.z);
@@ -159,6 +168,7 @@ impl Intersect for Object {
             Shape::Sphere => sphere_intersect(&obj_ray),
             Shape::Plane => plane_intersect(&obj_ray),
             Shape::Triangle => triangle_intersect(&obj_ray),
+            Shape::Square => square_intersect(&obj_ray),
             Shape::Cylinder => cylinder_intersect(&obj_ray),
         };
 

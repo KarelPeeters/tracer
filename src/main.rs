@@ -24,7 +24,7 @@ mod images;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     lower_process_priority();
 
-    let scene = demos::colored_spheres();
+    let scene = demos::random_tiles();
 
     let client = TevClient::wrap(TcpStream::connect("127.0.0.1:14158")?);
 
@@ -40,14 +40,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             TevProgress::new("test", client),
         ),
     };
-    let info = format!("{:#?}\n\n{:#?}", &renderer.settings, scene);
 
     let div = 1;
     let (width, height) = (1920 / div, 1080 / div);
 
+    let settings = renderer.settings.clone();
     let start = Instant::now();
     let image = renderer.render(&scene, width, height);
-    println!("Render took {:?}s", (Instant::now() - start).as_secs_f32());
+    let elapsed = Instant::now() - start;
+    println!("Render took {}s", elapsed.as_secs_f32());
+
+    let info = format!("{:#?}\n\n{:#?}\n\nRender took {}s\n", settings, scene, elapsed.as_secs_f32());
 
     let (image_discrete, _) = to_discrete_image(image.as_ref());
     let image_exr = to_exr_image(image.as_ref());

@@ -1,6 +1,7 @@
-use std::f32::consts::PI;
 use std::fs::read_to_string;
 use std::marker::PhantomData;
+use rand::rngs::SmallRng;
+use rand::{Rng, SeedableRng};
 
 use wavefront_obj::obj;
 
@@ -15,6 +16,15 @@ const BLACK: Color = Color { red: 0.0, green: 0.0, blue: 0.0, standard: PhantomD
 const WHITE: Color = Color { red: 1.0, green: 1.0, blue: 1.0, standard: PhantomData };
 
 const VACUUM: Medium = Medium { index_of_refraction: 1.0, volumetric_color: WHITE };
+
+pub fn color_by_name(name: &str) -> Color {
+    palette::Srgb::from_format(palette::named::from_str(name).expect("Invalid color name"))
+        .into_linear()
+}
+
+pub fn color_gray(v: f32) -> Color {
+    Color::new(v, v, v)
+}
 
 pub fn medium_glass(volumetric_color: Color) -> Medium {
     Medium {
@@ -72,7 +82,7 @@ pub fn single_red_sphere() -> Scene {
             Object {
                 shape: Shape::Plane,
                 material: material_diffuse(color_by_name("grey")),
-                transform: Transform::rotation(Vec3::x_axis(), PI / 2.0),
+                transform: Transform::rotation(Vec3::x_axis(), Angle::degrees(90.0)),
             },
             Object {
                 shape: Shape::Sphere,
@@ -111,7 +121,7 @@ pub fn colored_spheres() -> Scene {
             Object {
                 shape: Shape::Plane,
                 material: material_diffuse(Color::new(0.9, 0.9, 0.9)),
-                transform: Transform::rotation(Vec3::x_axis(), PI / 2.0),
+                transform: Transform::rotation(Vec3::x_axis(), Angle::degrees(90.0)),
             },
             //spheres
             Object {
@@ -130,7 +140,7 @@ pub fn colored_spheres() -> Scene {
                 transform: Transform::translation(Vec3::new(3.0, 1.0, -5.0)),
             },
         ],
-        sky_emission: Color::new(0.1, 0.1, 0.1),
+        sky_emission: color_gray(0.1),
         camera: Camera {
             fov_horizontal: Angle::degrees(90.0),
             transform: Transform::look_at(
@@ -149,7 +159,7 @@ pub fn cube() -> Scene {
         Object {
             shape: Shape::Plane,
             material: material_diffuse(color_by_name("grey")),
-            transform: Transform::rotation(Vec3::x_axis(), PI / 2.0),
+            transform: Transform::rotation(Vec3::x_axis(), Angle::degrees(90.0)),
         },
     ];
 
@@ -178,7 +188,39 @@ pub fn cube() -> Scene {
     }
 }
 
-fn color_by_name(name: &str) -> Color {
-    palette::Srgb::from_format(palette::named::from_str(name).expect("Invalid color name"))
-        .into_linear()
+pub fn random_tiles() -> Scene {
+    let mut objects = vec![];
+    let mut rng = SmallRng::seed_from_u64(0);
+
+    objects.push(Object {
+        shape: Shape::Sphere,
+        material: material_light(WHITE * 1000.0),
+        transform: Transform::translation(Vec3::new(0.0, 0.0, 15.0)),
+    });
+
+    for x in -10..=10 {
+        for y in -10..=10 {
+            let trans = Vec3::new(x as f32 - 0.5, y as f32 - 0.5, rng.gen_range(-2.0..2.0));
+
+            objects.push(Object {
+                shape: Shape::Square,
+                material: material_diffuse(WHITE),
+                transform: Transform::translation(trans),
+            });
+        }
+    }
+
+    Scene {
+        objects,
+        sky_emission: color_gray(0.1),
+        camera: Camera {
+            fov_horizontal: Angle::degrees(90.0),
+            transform: Transform::look_at(
+                Point3::new(0.0, -4.0, 10.0),
+                Point3::origin(),
+                Vec3::y_axis(),
+            ),
+            medium: VACUUM,
+        },
+    }
 }

@@ -8,8 +8,10 @@ pub enum Shape {
     Sphere,
     /// Vertical plane including xy axes
     Plane,
-    /// Triangle with corners at (0,0,0), (1,0,0) and (0,1,0)
+    /// Triangle with corners at `(0,0,0), (1,0,0), (0,1,0)`
     Triangle,
+    /// Square with corners at `(0,0,0), (1,0,0), (1,1,0), (0,1,0)`
+    Square,
     /// Cylinder with radius 1 around the y-axis
     Cylinder,
 }

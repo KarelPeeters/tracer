@@ -399,10 +399,10 @@ impl Matrix4 {
         ])
     }
 
-    fn rotation(axis: Unit<Vec3>, angle: f32) -> Self {
+    fn rotation(axis: Unit<Vec3>, angle: Angle) -> Self {
         let Vec3 { x, y, z } = *axis;
-        let c = angle.cos();
-        let s = angle.sin();
+        let c = angle.radians.cos();
+        let s = angle.radians.sin();
 
         Self::new([
             [c + x * x * (1.0 - c), x * y * (1.0 - c) - z * s, x * z * (1.0 - c) + y * s, 0.0],
@@ -451,7 +451,7 @@ impl Transform {
         }
     }
 
-    pub fn rotation(axis: Unit<Vec3>, angle: f32) -> Self {
+    pub fn rotation(axis: Unit<Vec3>, angle: Angle) -> Self {
         Self {
             fwd: Matrix4::rotation(axis, angle),
             inv: Matrix4::rotation(axis, -angle),
@@ -512,6 +512,7 @@ impl Mul<Point3> for Transform {
     }
 }
 
+#[derive(Copy, Clone)]
 pub struct Angle {
     pub radians: f32,
 }
@@ -523,6 +524,14 @@ impl Angle {
 
     pub fn degrees(degrees: f32) -> Angle {
         Angle::radians(degrees.to_radians())
+    }
+}
+
+impl Neg for Angle {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Angle { radians: -self.radians }
     }
 }
 

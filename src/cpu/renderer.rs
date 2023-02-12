@@ -10,7 +10,7 @@ use crate::common::scene::{Camera, Color, MaterialType, Medium, Object, Scene};
 use crate::cpu::geometry::{Hit, Intersect, Ray};
 use crate::cpu::stats::ColorVarianceEstimator;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CpuRenderSettings {
     pub stop_condition: StopCondition,
     pub max_bounces: u32,
