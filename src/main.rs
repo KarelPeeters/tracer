@@ -2,6 +2,7 @@
 
 use std::{fs, io};
 use std::cmp::max;
+use std::net::TcpStream;
 use std::path::PathBuf;
 use std::time::Instant;
 
@@ -25,6 +26,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let scene = demos::colored_spheres();
 
+    let client = TevClient::wrap(TcpStream::connect("127.0.0.1:14158")?);
+
     let renderer = CpuRenderer {
         settings: CpuRenderSettings {
             stop_condition: StopCondition::SampleCount(10),
@@ -34,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
         progress_handler: CombinedProgress::new(
             PrintProgress,
-            TevProgress::new("test", TevClient::spawn_path_default()?),
+            TevProgress::new("test", client),
         ),
     };
     let info = format!("{:#?}\n\n{:#?}", &renderer.settings, scene);
@@ -60,7 +63,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-
 
 fn pick_output_file_path() -> io::Result<PathBuf> {
     fs::create_dir_all("ignored/output")?;
