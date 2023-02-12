@@ -218,6 +218,7 @@ fn trace_ray<R: Rng>(
     color_exp(medium.volumetric_color, t) * result
 }
 
+#[derive(Debug)]
 struct SampleInfo {
     /// the direction of the next ray
     direction: Unit<Vec3>,
@@ -237,6 +238,7 @@ fn sample_direction<R: Rng>(ray: &Ray, hit: &Hit, material_type: MaterialType, r
     match material_type {
         MaterialType::Fixed => panic!("Can't sample direction for MaterialType::Fixed"),
         MaterialType::Diffuse => {
+            // cosine weighed sampling from the hemisphere pointing towards hit.normal
             let disk = Vec2::from_slice(&UnitDisc.sample(rng));
             let direction = disk_to_hemisphere(disk, hit.normal);
             SampleInfo { weight: 0.5, diffuse_fraction: 1.0, specular: false, crosses_surface: false, direction }
@@ -264,9 +266,12 @@ fn sample_direction<R: Rng>(ray: &Ray, hit: &Hit, material_type: MaterialType, r
 
 fn disk_to_hemisphere(disk: Vec2, normal: Unit<Vec3>) -> Unit<Vec3> {
     let z = (1.0 - disk.norm_squared()).sqrt();
-    let x_axis = Vec3::new(-normal.y, normal.x, 0.0).normalized();
-    let y_axis = Unit::new_unchecked(normal.cross(*x_axis));
-    Unit::new_unchecked((*x_axis * disk.x) + (*y_axis * disk.y) + (*normal * z))
+    let result = Unit::new_unchecked(Vec3::new(disk.x, disk.y, z));
+    if result.dot(*normal) >= 0.0 {
+        result
+    } else {
+        -result
+    }
 }
 
 fn reflect_direction(vec: Unit<Vec3>, normal: Unit<Vec3>) -> Unit<Vec3> {
@@ -340,5 +345,20 @@ fn fast_powf(base: f32, exp: f32) -> f32 {
         }
     } else {
         base.powf(exp)
+    }
+}
+
+
+#[cfg(test)]
+mod test {
+    use crate::common::math::{Vec2, Vec3};
+    use crate::cpu::renderer::disk_to_hemisphere;
+
+    #[test]
+    fn disk_to_hemisphere_z() {
+        let disk = Vec2::new(0.1, 0.1);
+        let normal = Vec3::z_axis();
+        let result = disk_to_hemisphere(disk, normal);
+        println!("{:?}", result);
     }
 }
