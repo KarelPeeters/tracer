@@ -7,8 +7,9 @@ use rand::thread_rng;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::common::scene::Scene;
+use crate::cpu::accel::ObjectId;
 use crate::cpu::accel::octree::Octree;
-use crate::cpu::renderer::{CpuRenderSettings, PixelResult, RayCamera};
+use crate::cpu::renderer::{CpuRenderSettings, is_light, PixelResult, RayCamera, RenderStructure};
 
 pub struct CpuRenderer<P: ProgressHandler> {
     pub settings: CpuRenderSettings,
@@ -72,7 +73,6 @@ impl<P: ProgressHandler> CpuRenderer<P> {
         println!("{:?}", accel);
         println!("Octree len/depth: {:?}, original objects: {}", accel.len_depth(), scene.objects.len());
 
-        // TOD noaccel and octree look the same but strange, didn't no-accel look better in the past?
         // let accel = NoAccel;
 
         let mut progress_handler = self.progress_handler.init(width, height);
@@ -101,8 +101,21 @@ impl<P: ProgressHandler> CpuRenderer<P> {
         }).expect("Failed to spawn collector thread");
 
         let settings = self.settings;
-
         let camera = RayCamera::new(&scene.camera, settings.anti_alias, width, height);
+
+        // pre-filter lights
+        let lights = scene.objects.iter().enumerate().filter_map(|(id, object)| {
+            if is_light(object) { Some(ObjectId::new(id)) } else { None }
+        }).collect();
+
+        let structure = RenderStructure {
+            scene,
+            camera,
+            accel,
+            lights,
+            settings,
+        };
+
         let mut blocks = split_into_blocks(width, height);
         blocks.shuffle(&mut thread_rng());
 
@@ -111,7 +124,7 @@ impl<P: ProgressHandler> CpuRenderer<P> {
             let mut data = Vec::new();
             for y in block.y_range() {
                 for x in block.x_range() {
-                    data.push(settings.calculate_pixel(scene, &accel, &camera, rng, x, y))
+                    data.push(structure.calculate_pixel(rng, x, y))
                 }
             }
 

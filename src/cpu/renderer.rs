@@ -5,12 +5,12 @@ use rand::Rng;
 use rand_distr::UnitDisc;
 
 use crate::common::math::{Norm, Point3, Transform, Unit, Vec2, Vec3};
-use crate::common::scene::{Camera, Color, MaterialType, Medium, Scene};
+use crate::common::scene::{Camera, Color, MaterialType, Medium, Object, Scene};
 use crate::cpu::accel::{Accel, ObjectId};
 use crate::cpu::geometry::{Hit, Intersect, ObjectHit, Ray};
 use crate::cpu::stats::ColorVarianceEstimator;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct CpuRenderSettings {
     pub stop_condition: StopCondition,
     pub max_bounces: u32,
@@ -39,13 +39,24 @@ pub struct PixelResult {
     pub samples: u32,
 }
 
-impl CpuRenderSettings {
-    pub fn calculate_pixel(&self, scene: &Scene, accel: &impl Accel, camera: &RayCamera, rng: &mut impl Rng, x: u32, y: u32) -> PixelResult {
+pub struct RenderStructure<'a, A> {
+    pub scene: &'a Scene,
+    pub camera: RayCamera,
+    pub accel: A,
+    pub lights: Vec<ObjectId>,
+    pub settings: CpuRenderSettings,
+}
+
+impl<A: Accel> RenderStructure<'_, A> {
+    pub fn calculate_pixel(&self, rng: &mut impl Rng, x: u32, y: u32) -> PixelResult {
+        let settings = &self.settings;
+        let scene = self.scene;
+
         let mut estimator = ColorVarianceEstimator::default();
 
-        while !self.stop_condition.is_done(&estimator) {
-            let ray = camera.ray(rng, x, y);
-            let color = trace_ray(scene, accel, self.strategy, &ray, rng, self.max_bounces, true, scene.camera.medium);
+        while !settings.stop_condition.is_done(&estimator) {
+            let ray = self.camera.ray(rng, x, y);
+            let color = trace_ray(scene, &self.accel, &self.lights, settings.strategy, &ray, rng, settings.max_bounces, true, scene.camera.medium);
             estimator.update(color);
         }
 
@@ -122,13 +133,16 @@ impl RayCamera {
 
 const SHADOW_BIAS: f32 = 0.0001;
 
-fn sample_lights<R: Rng>(scene: &Scene, accel: &impl Accel, next_start: Point3, medium: Medium, rng: &mut R, hit: &Hit) -> Color {
+pub fn is_light(object: &Object) -> bool {
+    !is_black(object.material.emission)
+}
+
+fn sample_lights<R: Rng>(scene: &Scene, accel: &impl Accel, lights: &[ObjectId], next_start: Point3, medium: Medium, rng: &mut R, hit: &Hit) -> Color {
     let mut result = Color::new(0.0, 0.0, 0.0);
 
-    //TODO pre-filter out the lights, this scales badly with the amount of other options
-    for (light_index, light) in scene.objects.iter().enumerate() {
-        let light_id = ObjectId::new(light_index);
-        if is_black(light.material.emission) { continue; }
+    for &light_id in lights {
+        let light = &scene.objects[light_id.index];
+        assert!(is_light(light));
 
         let (weight, target) = light.sample(rng);
         let light_ray = Ray { start: next_start, direction: (target - next_start).normalized() };
@@ -154,6 +168,7 @@ fn sample_lights<R: Rng>(scene: &Scene, accel: &impl Accel, next_start: Point3, 
 fn trace_ray<'a, R: Rng>(
     scene: &Scene,
     accel: &'a impl Accel,
+    lights: &[ObjectId],
     strategy: Strategy,
     ray: &Ray,
     rng: &mut R,
@@ -202,7 +217,7 @@ fn trace_ray<'a, R: Rng>(
 
                 if sample.diffuse_fraction != 0.0 {
                     let light_start = hit.point + (*hit.normal * SHADOW_BIAS);
-                    let light_contribution = sample_lights(scene, accel, light_start, medium, rng, &hit);
+                    let light_contribution = sample_lights(scene, accel, lights, light_start, medium, rng, &hit);
                     result += object.material.albedo * light_contribution * sample.diffuse_fraction;
                 }
             }
@@ -214,7 +229,7 @@ fn trace_ray<'a, R: Rng>(
             direction: sample.direction,
         };
         let next_medium = if sample.crosses_surface { next_medium } else { medium };
-        let next_contribution = trace_ray(scene, accel, strategy, &next_ray, rng, bounces_left - 1, sample.specular, next_medium);
+        let next_contribution = trace_ray(scene, accel, lights, strategy, &next_ray, rng, bounces_left - 1, sample.specular, next_medium);
 
         result += object.material.albedo * next_contribution * sample.weight;
 
