@@ -64,9 +64,9 @@ fn split_into_blocks(width: u32, height: u32) -> Vec<Block> {
 impl<P: ProgressHandler> CpuRenderer<P> {
     pub fn render(self, scene: &Scene, width: u32, height: u32) -> ImgVec<PixelResult> {
         println!("Building octree");
-        let octree = Octree::new(&scene.objects, self.settings.octree_max_flat_size);
+        let octree = Octree::new(scene.objects.clone(), self.settings.octree_max_flat_size);
         println!("{:?}", octree);
-        println!("Octree len: {}, original objects: {}", octree.len(), scene.objects.len());
+        println!("Octree len/depth: {:?}, original objects: {}", octree.len_depth(), scene.objects.len());
 
         let mut progress_handler = self.progress_handler.init(width, height);
 

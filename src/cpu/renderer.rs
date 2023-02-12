@@ -1,5 +1,6 @@
 use std::cmp::max;
 
+use decorum::N32;
 use rand::distributions::Distribution;
 use rand::Rng;
 use rand_distr::UnitDisc;
@@ -299,14 +300,12 @@ fn snells_law(vec: Unit<Vec3>, normal: Unit<Vec3>, r: f32) -> (bool, Unit<Vec3>)
     }
 }
 
-// TODO somehow use the current best t to early exit on new objects?
-pub fn first_hit<'a>(objects: &'a [Object], ray: &Ray) -> Option<ObjectHit<'a>> {
-    let mut result = None;
-    for object in objects {
-        let cand = object.intersect(ray).map(|hit| ObjectHit { object, hit });
-        result = ObjectHit::closest_option(result, cand);
-    }
-    result
+pub fn first_hit<'a>(objects: impl IntoIterator<Item=&'a Object>, ray: &Ray) -> Option<ObjectHit<'a>> {
+    objects.into_iter()
+        .filter_map(|object| {
+            object.intersect(ray).map(|hit| ObjectHit { object, hit })
+        })
+        .min_by_key(|hit| N32::from_inner(hit.hit.t))
 }
 
 fn is_black(color: Color) -> bool {
