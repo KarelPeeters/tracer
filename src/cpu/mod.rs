@@ -5,3 +5,4 @@ mod driver;
 mod renderer;
 mod geometry;
 mod stats;
+mod octree;

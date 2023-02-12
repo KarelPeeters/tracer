@@ -44,12 +44,36 @@ pub struct Hit {
     pub normal: Unit<Vec3>,
 }
 
+#[derive(Debug)]
+pub struct ObjectHit<'a> {
+    pub object: &'a Object,
+    pub hit: Hit,
+}
+
 impl Hit {
     fn transform(&self, transform: Transform, direction: Unit<Vec3>) -> Hit {
         Hit {
             t: self.t * (transform * (*direction)).norm(),
             point: transform * self.point,
             normal: transform.inv_transpose_mul(*self.normal).normalized(),
+        }
+    }
+}
+
+impl ObjectHit<'_> {
+    pub fn closest<'a>(left: ObjectHit<'a>, right: ObjectHit<'a>) -> ObjectHit<'a> {
+        if left.hit.t < right.hit.t {
+            left
+        } else {
+            right
+        }
+    }
+
+    pub fn closest_option<'a>(left: Option<ObjectHit<'a>>, right: Option<ObjectHit<'a>>) -> Option<ObjectHit<'a>> {
+        match (left, right) {
+            (Some(result), None) | (None, Some(result)) => Some(result),
+            (Some(left), Some(right)) => Some(Self::closest(left, right)),
+            (None, None) => None,
         }
     }
 }
@@ -111,7 +135,6 @@ fn square_intersect(ray: &Ray) -> Option<Hit> {
         (0.0..1.0).contains(&x) && (0.0..1.0).contains(&y)
     })
 }
-
 
 fn cylinder_intersect(ray: &Ray) -> Option<Hit> {
     //work in xz plane

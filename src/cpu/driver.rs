@@ -7,6 +7,7 @@ use rand::thread_rng;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::common::scene::Scene;
+use crate::cpu::octree::Octree;
 use crate::cpu::renderer::{CpuRenderSettings, PixelResult, RayCamera};
 
 pub struct CpuRenderer<P: ProgressHandler> {
@@ -62,6 +63,11 @@ fn split_into_blocks(width: u32, height: u32) -> Vec<Block> {
 
 impl<P: ProgressHandler> CpuRenderer<P> {
     pub fn render(self, scene: &Scene, width: u32, height: u32) -> ImgVec<PixelResult> {
+        println!("Building octree");
+        let octree = Octree::new(&scene.objects, self.settings.octree_max_flat_size);
+        println!("{:?}", octree);
+        println!("Octree len: {}, original objects: {}", octree.len(), scene.objects.len());
+
         let mut progress_handler = self.progress_handler.init(width, height);
 
         // channel to send results back to this thread
@@ -98,7 +104,7 @@ impl<P: ProgressHandler> CpuRenderer<P> {
             let mut data = Vec::new();
             for y in block.y_range() {
                 for x in block.x_range() {
-                    data.push(settings.calculate_pixel(scene, &camera, rng, x, y))
+                    data.push(settings.calculate_pixel(scene, &octree, &camera, rng, x, y))
                 }
             }
 

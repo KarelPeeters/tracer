@@ -34,6 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             max_bounces: 8,
             anti_alias: true,
             strategy: Strategy::SampleLights,
+            octree_max_flat_size: 8,
         },
         progress_handler: CombinedProgress::new(
             PrintProgress,

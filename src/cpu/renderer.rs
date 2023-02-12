@@ -1,5 +1,4 @@
 use std::cmp::max;
-use std::f32;
 
 use rand::distributions::Distribution;
 use rand::Rng;
@@ -7,7 +6,8 @@ use rand_distr::UnitDisc;
 
 use crate::common::math::{Norm, Point3, Transform, Unit, Vec2, Vec3};
 use crate::common::scene::{Camera, Color, MaterialType, Medium, Object, Scene};
-use crate::cpu::geometry::{Hit, Intersect, Ray};
+use crate::cpu::geometry::{Hit, Intersect, ObjectHit, Ray};
+use crate::cpu::octree::Octree;
 use crate::cpu::stats::ColorVarianceEstimator;
 
 #[derive(Debug, Clone)]
@@ -16,6 +16,7 @@ pub struct CpuRenderSettings {
     pub max_bounces: u32,
     pub anti_alias: bool,
     pub strategy: Strategy,
+    pub octree_max_flat_size: usize,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -39,12 +40,12 @@ pub struct PixelResult {
 }
 
 impl CpuRenderSettings {
-    pub fn calculate_pixel(&self, scene: &Scene, camera: &RayCamera, rng: &mut impl Rng, x: u32, y: u32) -> PixelResult {
+    pub fn calculate_pixel(&self, scene: &Scene, octree: &Octree, camera: &RayCamera, rng: &mut impl Rng, x: u32, y: u32) -> PixelResult {
         let mut estimator = ColorVarianceEstimator::default();
 
         while !self.stop_condition.is_done(&estimator) {
             let ray = camera.ray(rng, x, y);
-            let color = trace_ray(scene, self.strategy, &ray, rng, self.max_bounces, true, scene.camera.medium);
+            let color = trace_ray(scene, octree, self.strategy, &ray, rng, self.max_bounces, true, scene.camera.medium);
             estimator.update(color);
         }
 
@@ -79,7 +80,6 @@ impl StopCondition {
         }
     }
 }
-
 
 pub struct RayCamera {
     x_span: f32,
@@ -132,8 +132,8 @@ fn sample_lights<R: Rng>(scene: &Scene, next_start: Point3, medium: Medium, rng:
         let (weight, target) = light.sample(rng);
         let light_ray = Ray { start: next_start, direction: (target - next_start).normalized() };
 
-        match first_hit(scene, &light_ray) {
-            Some((object, light_hit)) if std::ptr::eq(object, light) => {
+        match first_hit(&scene.objects, &light_ray) {
+            Some(ObjectHit { object, hit: light_hit }) if std::ptr::eq(object, light) => {
                 let abs_cos = light_ray.direction.dot(*hit.normal).abs();
                 let volumetric_mask = color_exp(medium.volumetric_color, light_hit.t);
 
@@ -149,6 +149,7 @@ fn sample_lights<R: Rng>(scene: &Scene, next_start: Point3, medium: Medium, rng:
 
 fn trace_ray<R: Rng>(
     scene: &Scene,
+    octree: &Octree,
     strategy: Strategy,
     ray: &Ray,
     rng: &mut R,
@@ -160,7 +161,9 @@ fn trace_ray<R: Rng>(
         return Color::new(0.0, 0.0, 0.0);
     }
 
-    let (t, result) = if let Some((object, mut hit)) = first_hit(scene, ray) {
+    let (t, result) = if let Some(object_hit) = octree.first_hit(ray) {
+        let ObjectHit { object, mut hit } = object_hit;
+
         if let MaterialType::Fixed = object.material.material_type {
             return object.material.albedo;
         }
@@ -206,7 +209,7 @@ fn trace_ray<R: Rng>(
             direction: sample.direction,
         };
         let next_medium = if sample.crosses_surface { next_medium } else { medium };
-        let next_contribution = trace_ray(scene, strategy, &next_ray, rng, bounces_left - 1, sample.specular, next_medium);
+        let next_contribution = trace_ray(scene, octree, strategy, &next_ray, rng, bounces_left - 1, sample.specular, next_medium);
 
         result += object.material.albedo * next_contribution * sample.weight;
 
@@ -296,31 +299,14 @@ fn snells_law(vec: Unit<Vec3>, normal: Unit<Vec3>, r: f32) -> (bool, Unit<Vec3>)
     }
 }
 
-fn first_hit<'a>(scene: &'a Scene, ray: &Ray) -> Option<(&'a Object, Hit)> {
-    //this function used to be implemented with iterators but that was a bit slower
-    let mut closest_hit = Hit {
-        t: f32::INFINITY,
-        point: Default::default(),
-        normal: Vec3::z_axis(),
-    };
-
-    // this initialization is okay because we return None at the end if we didn't hit anything
-    let mut closest_object = scene.objects.first()?;
-
-    for object in &scene.objects {
-        if let Some(hit) = object.intersect(ray) {
-            if hit.t < closest_hit.t {
-                closest_hit = hit;
-                closest_object = object;
-            }
-        }
+// TODO somehow use the current best t to early exit on new objects?
+pub fn first_hit<'a>(objects: &'a [Object], ray: &Ray) -> Option<ObjectHit<'a>> {
+    let mut result = None;
+    for object in objects {
+        let cand = object.intersect(ray).map(|hit| ObjectHit { object, hit });
+        result = ObjectHit::closest_option(result, cand);
     }
-
-    if closest_hit.t == f32::INFINITY {
-        None
-    } else {
-        Some((closest_object, closest_hit))
-    }
+    result
 }
 
 fn is_black(color: Color) -> bool {
@@ -347,7 +333,6 @@ fn fast_powf(base: f32, exp: f32) -> f32 {
         base.powf(exp)
     }
 }
-
 
 #[cfg(test)]
 mod test {

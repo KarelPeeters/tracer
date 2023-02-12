@@ -4,6 +4,7 @@ version = "0.1.0"
 authors = ["Karel <karel.peeters.leuven@gmail.com>"]
 edition = "2018"
 
+# TODO go though deps, update, remove entirely, remove features
 [dependencies]
 image = { version = "0.23.14", default-features = false, features = ["png"] }
 palette = "0.6.0"
@@ -18,6 +19,9 @@ tev_client = "0.5.2"
 itertools = "0.10.3"
 crossbeam = "0.8.1"
 num_cpus = "1.13.1"
+derive_more = "0.99.17"
+decorum = { version = "0.3.1", default-features = false }
+
 
 [profile.dev]
 opt-level = 1

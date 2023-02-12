@@ -6,7 +6,7 @@ pub type Color = palette::LinSrgb;
 pub enum Shape {
     /// Unit sphere with center at origin
     Sphere,
-    /// Vertical plane including xy axes
+    /// Plane spanning the xy axes
     Plane,
     /// Triangle with corners at `(0,0,0), (1,0,0), (0,1,0)`
     Triangle,
@@ -44,7 +44,7 @@ pub struct Medium {
     pub volumetric_color: Color,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Object {
     pub shape: Shape,
     pub material: Material,
