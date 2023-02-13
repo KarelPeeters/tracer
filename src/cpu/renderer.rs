@@ -22,6 +22,7 @@ pub struct CpuRenderSettings {
 #[derive(Debug, Copy, Clone)]
 pub enum StopCondition {
     SampleCount(u32),
+    // TODO consider variance in neighborhood instead of only single pixel
     Variance { min_samples: u32, max_relative_variance: f32 },
 }
 

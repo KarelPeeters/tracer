@@ -8,7 +8,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::common::scene::Scene;
 use crate::cpu::accel::ObjectId;
-use crate::cpu::accel::octree::Octree;
+use crate::cpu::accel::bvh::BVH;
 use crate::cpu::renderer::{CpuRenderSettings, is_light, PixelResult, RayCamera, RenderStructure};
 
 pub struct CpuRenderer<P: ProgressHandler> {
@@ -64,16 +64,10 @@ fn split_into_blocks(width: u32, height: u32) -> Vec<Block> {
 
 impl<P: ProgressHandler> CpuRenderer<P> {
     pub fn render(self, scene: &Scene, width: u32, height: u32) -> ImgVec<PixelResult> {
-        // TODO fix BVH general bug
-        // println!("Building BVH");
-        // let accel = BVH::new(&scene.objects);
-
-        println!("Building octree");
-        let accel = Octree::new(&scene.objects, self.settings.octree_max_flat_size);
-        println!("{:?}", accel);
-        println!("Octree len/depth: {:?}, original objects: {}", accel.len_depth(), scene.objects.len());
-
+        let accel = BVH::new(&scene.objects);
+        // let accel = Octree::new(&scene.objects, self.settings.octree_max_flat_size);
         // let accel = NoAccel;
+        println!("{:?}", accel);
 
         let mut progress_handler = self.progress_handler.init(width, height);
 

@@ -2,7 +2,7 @@ use crate::common::math::{Point3, Transform};
 use crate::common::scene::{Object, Shape};
 
 /// Axis-aligned bounding box.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct AxisBox {
     pub low: Point3,
     pub high: Point3,
@@ -14,14 +14,14 @@ impl AxisBox {
     pub fn new(low: Point3, high: Point3) -> Self {
         // TODO add eps padding in here automatically?
         let delta = high - low;
-        assert!(delta.x >= 0.0 && delta.y >= 0.0 && delta.z >= 0.0);
+        assert!(delta.x >= 0.0 && delta.y >= 0.0 && delta.z >= 0.0, "low={:?}, high={:?}", low, high);
         Self { low, high }
     }
 
     pub fn combine(self, other: AxisBox) -> Self {
         AxisBox::new(
             self.low.min(other.low),
-            self.high.min(other.high),
+            self.high.max(other.high),
         )
     }
 
@@ -48,6 +48,10 @@ impl AxisBox {
 
     pub fn for_object(object: &Object) -> Self {
         object.transform * AxisBox::for_shape(object.shape)
+    }
+
+    pub fn is_finite(self) -> bool {
+        self.low.is_finite() && self.high.is_finite()
     }
 }
 

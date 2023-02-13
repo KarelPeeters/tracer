@@ -72,6 +72,10 @@ impl Vec3 {
     pub fn z_axis() -> Unit<Vec3> {
         Unit::new_unchecked(Vec3::new(0.0, 0.0, 1.0))
     }
+
+    pub fn is_finite(self) -> bool {
+        self.x.is_finite() && self.y.is_finite() && self.z.is_finite()
+    }
 }
 
 impl Norm for Vec3 {
@@ -97,6 +101,10 @@ impl Vec2 {
 
     pub fn dot(self, other: Vec2) -> f32 {
         self.x * other.x + self.y * other.y
+    }
+
+    pub fn is_finite(self) -> bool {
+        self.x.is_finite() && self.y.is_finite()
     }
 }
 
@@ -170,6 +178,10 @@ impl Point3 {
     pub fn middle(self, other: Point3) -> Point3 {
         Point3::new((self.x + other.x) / 2.0, (self.y + other.y) / 2.0, (self.z + other.z) / 2.0)
     }
+
+    pub fn is_finite(self) -> bool {
+        self.x.is_finite() && self.y.is_finite() && self.z.is_finite()
+    }
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq)]
@@ -192,6 +204,10 @@ impl Point2 {
 
     pub fn distance_to(self, other: Point2) -> f32 {
         (self - other).norm()
+    }
+
+    pub fn is_finite(self) -> bool {
+        self.coords.x.is_finite() && self.coords.y.is_finite()
     }
 }
 
