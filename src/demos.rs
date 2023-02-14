@@ -11,13 +11,13 @@ use crate::common::math::{Angle, Point3, Transform, Unit, Vec3};
 use crate::common::scene::{Camera, Color, Material, MaterialType, Medium, Object, Scene, Shape};
 use crate::common::util::obj_to_triangles;
 
-const VACUUM_IOR: f32 = 1.0;
-const GLASS_IOR: f32 = 1.52;
+pub const VACUUM_IOR: f32 = 1.0;
+pub const GLASS_IOR: f32 = 1.52;
 
-const BLACK: Color = Color { red: 0.0, green: 0.0, blue: 0.0, standard: PhantomData };
-const WHITE: Color = Color { red: 1.0, green: 1.0, blue: 1.0, standard: PhantomData };
+pub const BLACK: Color = Color { red: 0.0, green: 0.0, blue: 0.0, standard: PhantomData };
+pub const WHITE: Color = Color { red: 1.0, green: 1.0, blue: 1.0, standard: PhantomData };
 
-const VACUUM: Medium = Medium { index_of_refraction: 1.0, volumetric_color: WHITE };
+pub const VACUUM: Medium = Medium { index_of_refraction: 1.0, volumetric_color: WHITE };
 
 pub fn color_by_name(name: &str) -> Color {
     palette::Srgb::from_format(palette::named::from_str(name).expect("Invalid color name"))
@@ -76,6 +76,79 @@ pub fn material_light(emission: Color) -> Material {
         inside: VACUUM,
         outside: VACUUM,
     }
+}
+
+pub fn material_fixed(color: Color) -> Material {
+    Material {
+        material_type: MaterialType::Fixed,
+        albedo: color,
+        emission: BLACK,
+        inside: VACUUM,
+        outside: VACUUM,
+    }
+}
+
+pub fn axes(brightness: f32, radius_axis: f32, radius_dot: Option<f32>, cube_dots: bool) -> Vec<Object> {
+    let scale_axis = Transform::scaling(radius_axis);
+    let material_x = material_fixed(Color::new(brightness, 0.0, 0.0));
+    let material_y = material_fixed(Color::new(0.0, brightness, 0.0));
+    let material_z = material_fixed(Color::new(0.0, 0.0, brightness));
+    let material_cube = material_fixed(BLACK);
+
+    let mut result = vec![];
+
+    result.push(Object {
+        shape: Shape::Cylinder,
+        material: material_x,
+        transform: Transform::rotation(Vec3::z_axis(), Angle::degrees(90.0)) * scale_axis,
+    });
+    result.push(Object {
+        shape: Shape::Cylinder,
+        material: material_y,
+        transform: scale_axis,
+    });
+    result.push(Object {
+        shape: Shape::Cylinder,
+        material: material_z,
+        transform: Transform::rotation(Vec3::x_axis(), Angle::degrees(90.0)) * scale_axis,
+    });
+
+    if let Some(radius_dot) = radius_dot {
+        let scale_dot = Transform::scaling(radius_dot);
+        result.push(Object {
+            shape: Shape::Sphere,
+            material: material_x,
+            transform: Transform::translation(Vec3::new(1.0, 0.0, 0.0)) * scale_dot,
+        });
+        result.push(Object {
+            shape: Shape::Sphere,
+            material: material_y,
+            transform: Transform::translation(Vec3::new(0.0, 1.0, 0.0)) * scale_dot,
+        });
+        result.push(Object {
+            shape: Shape::Sphere,
+            material: material_z,
+            transform: Transform::translation(Vec3::new(0.0, 0.0, 1.0)) * scale_dot,
+        });
+
+        if cube_dots {
+            let coords = [
+                Vec3::new(1.0, 1.0, 1.0),
+                Vec3::new(0.0, 1.0, 1.0),
+                Vec3::new(1.0, 0.0, 1.0),
+                Vec3::new(1.0, 1.0, 0.0),
+            ];
+            for coord in coords {
+                result.push(Object {
+                    shape: Shape::Sphere,
+                    material: material_cube,
+                    transform: Transform::translation(coord) * scale_dot,
+                });
+            }
+        }
+    }
+
+    result
 }
 
 pub fn single_red_sphere() -> Scene {
