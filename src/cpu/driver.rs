@@ -65,10 +65,13 @@ fn split_into_blocks(width: u32, height: u32) -> Vec<Block> {
 
 impl<P: ProgressHandler> CpuRenderer<P> {
     pub fn render(self, scene: &Scene, width: u32, height: u32) -> ImgVec<PixelResult> {
+        println!("Building accelerator");
+        let start = Instant::now();
         let accel = BVH::new(&scene.objects);
         // let accel = Octree::new(&scene.objects, self.settings.octree_max_flat_size);
         // let accel = NoAccel;
-        println!("{:?}", accel);
+        println!("  {:?}", accel);
+        println!("  took {:?}", start.elapsed());
 
         let mut progress_handler = self.progress_handler.init(width, height);
 

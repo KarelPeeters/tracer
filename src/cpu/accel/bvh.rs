@@ -10,7 +10,9 @@ use crate::common::scene::Object;
 use crate::cpu::accel::{Accel, first_hit, ObjectId};
 use crate::cpu::geometry::{ObjectHit, Ray};
 
-/// Implementation following https://jacco.ompf2.com/2022/04/13/how-to-build-a-bvh-part-1-basics/.
+/// Implementation following
+/// * https://jacco.ompf2.com/2022/04/13/how-to-build-a-bvh-part-1-basics/.
+/// * https://jacco.ompf2.com/2022/04/18/how-to-build-a-bvh-part-2-faster-rays/
 pub struct BVH {
     /// objects with infinite spans that don't fit in the tree structure
     global_ids: Vec<SmallId>,
@@ -193,16 +195,11 @@ impl Builder<'_> {
             NodeKind::Branch { .. } => panic!("can only split leaf nodes"),
         };
 
-        if len.get() <= 2 {
-            return;
-        }
-
         // find the split axis and point
-        let extend = bound.high - bound.low;
-        let split_axis = Axis3::ALL.into_iter()
-            .max_by_key(|&a| Total::from_inner(extend.get(a)))
-            .unwrap();
-        let split_value = (bound.low.get(split_axis) + bound.high.get(split_axis)) / 2.0;
+        let (split_axis, split_value) = match self.find_best_split(start, len, bound) {
+            Some(split) => split,
+            None => return,
+        };
 
         // rearrange the objects
         let split_index = partition(
@@ -232,6 +229,80 @@ impl Builder<'_> {
         // continue recursing
         self.split(left_index);
         self.split(left_index + 1);
+    }
+
+    #[allow(dead_code)]
+    fn find_best_split_old(&self, _: u32, _: NonZeroU32, bound: AxisBox) -> Option<(Axis3, f32)> {
+        let extend = bound.high - bound.low;
+        let split_axis = Axis3::ALL.into_iter()
+            .max_by_key(|&a| Total::from_inner(extend.get(a)))
+            .unwrap();
+        let split_value = (bound.low.get(split_axis) + bound.high.get(split_axis)) / 2.0;
+        Some((split_axis, split_value))
+    }
+
+    fn find_best_split(&self, start: u32, len: NonZeroU32, bound: AxisBox) -> Option<(Axis3, f32)> {
+        // no point even trying to split if we don't have enough nodes
+        if len.get() < 2 {
+            return None;
+        }
+
+        let mut best = None;
+        let mut best_cost = f32::INFINITY;
+
+        for index in start..(start + len.get()) {
+            let centroid = object_centroid(self.get_object(index));
+            for axis in Axis3::ALL {
+                let value = centroid.get(axis);
+
+                let cost = self.eval_potential_split(start, len, axis, value);
+                if cost <= best_cost {
+                    best = Some((axis, value));
+                    best_cost = cost;
+                }
+            }
+        }
+
+        let curr_cost = len.get() as f32 * bound.area();
+        if best_cost < curr_cost {
+            best
+        } else {
+            None
+        }
+    }
+
+    /// Evaluate the surface area heuristic for the given potential split.
+    fn eval_potential_split(&self, start: u32, len: NonZeroU32, axis: Axis3, value: f32) -> f32 {
+        const INF: f32 = f32::INFINITY;
+
+        let mut left_count: u32 = 0;
+        let mut left_low = Point3::new(INF, INF, INF);
+        let mut left_high = Point3::new(-INF, -INF, -INF);
+        let mut right_count: u32 = 0;
+        let mut right_low = Point3::new(INF, INF, INF);
+        let mut right_high = Point3::new(-INF, -INF, -INF);
+
+        for index in start..(start + len.get()) {
+            let centroid = object_centroid(self.get_object(index));
+            if centroid.get(axis) < value {
+                left_low = left_low.min(centroid);
+                left_high = left_high.max(centroid);
+                left_count += 1;
+            } else {
+                right_low = right_low.min(centroid);
+                right_high = right_high.max(centroid);
+                right_count += 1;
+            }
+        }
+
+        if left_count == 0 || right_count == 0 {
+            return f32::INFINITY;
+        }
+
+        let left_box = AxisBox::new(left_low, left_high);
+        let right_box = AxisBox::new(right_low, right_high);
+
+        left_count as f32 * left_box.area() + right_count as f32 * right_box.area()
     }
 
     fn check(&self, global_ids: &[SmallId]) {

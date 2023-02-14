@@ -53,6 +53,16 @@ impl AxisBox {
     pub fn is_finite(self) -> bool {
         self.low.is_finite() && self.high.is_finite()
     }
+
+    pub fn area(self) -> f32 {
+        let delta = self.high - self.low;
+        2.0 * (delta.x * delta.y + delta.y * delta.z + delta.z * delta.x)
+    }
+
+    pub fn volume(self) -> f32 {
+        let delta = self.high - self.low;
+        delta.x * delta.y * delta.z
+    }
 }
 
 impl std::ops::Mul<AxisBox> for Transform {
