@@ -9,7 +9,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::common::scene::Scene;
 use crate::cpu::accel::ObjectId;
-use crate::cpu::accel::bvh::BVH;
+use crate::cpu::accel::bvh::{BVH, BVHSplitStrategy};
 use crate::cpu::renderer::{CpuRenderSettings, is_light, PixelResult, RayCamera, RenderStructure};
 
 pub struct CpuRenderer<P: ProgressHandler> {
@@ -67,7 +67,7 @@ impl<P: ProgressHandler> CpuRenderer<P> {
     pub fn render(self, scene: &Scene, width: u32, height: u32) -> ImgVec<PixelResult> {
         println!("Building accelerator");
         let start = Instant::now();
-        let accel = BVH::new(&scene.objects);
+        let accel = BVH::new(&scene.objects, BVHSplitStrategy::default());
         // let accel = Octree::new(&scene.objects, self.settings.octree_max_flat_size);
         // let accel = NoAccel;
         println!("  {:?}", accel);

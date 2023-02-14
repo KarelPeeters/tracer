@@ -5,7 +5,7 @@ use decorum::Total;
 use itertools::{Itertools, partition};
 
 use crate::common::aabb::AxisBox;
-use crate::common::math::{Axis3, Axis3Owner, Point3};
+use crate::common::math::{Axis3, Axis3Owner, lerp, Point3};
 use crate::common::scene::Object;
 use crate::cpu::accel::{Accel, first_hit, ObjectId};
 use crate::cpu::geometry::{ObjectHit, Ray};
@@ -22,15 +22,15 @@ pub struct BVH {
     nodes: Vec<Node>,
 }
 
-/// Smaller version of ObjectId to fit more things into the cache.
-#[derive(Debug, Copy, Clone)]
-struct SmallId {
-    index: u32,
+pub enum BVHSplitStrategy {
+    SplitLargestAxis,
+    SurfaceAreaHeuristic { test_planes: Option<usize> },
 }
 
-impl SmallId {
-    fn to_large(self) -> ObjectId {
-        ObjectId { index: self.index as usize }
+impl Default for BVHSplitStrategy {
+    fn default() -> Self {
+        // TODO investigate why the other options are slower (at least on the "random tiles" scene)
+        BVHSplitStrategy::SplitLargestAxis
     }
 }
 
@@ -38,6 +38,12 @@ impl SmallId {
 struct Node {
     bound: AxisBox,
     kind: NodeKind,
+}
+
+/// Smaller version of ObjectId to fit more things into the cache.
+#[derive(Debug, Copy, Clone)]
+struct SmallId {
+    index: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -52,7 +58,7 @@ enum NodeKind {
 }
 
 impl BVH {
-    pub fn new(objects: &[Object]) -> Self {
+    pub fn new(objects: &[Object], strategy: BVHSplitStrategy) -> Self {
         assert!(objects.len() < u32::MAX as usize);
         let total_len = objects.len() as u32;
 
@@ -67,6 +73,7 @@ impl BVH {
         };
 
         let mut builder = Builder {
+            strategy,
             objects,
             ids,
             nodes: vec![],
@@ -165,6 +172,7 @@ impl AxisBox {
 }
 
 struct Builder<'a> {
+    strategy: BVHSplitStrategy,
     objects: &'a [Object],
     ids: Vec<SmallId>,
     nodes: Vec<Node>,
@@ -231,8 +239,16 @@ impl Builder<'_> {
         self.split(left_index + 1);
     }
 
-    #[allow(dead_code)]
-    fn find_best_split_old(&self, _: u32, _: NonZeroU32, bound: AxisBox) -> Option<(Axis3, f32)> {
+    fn find_best_split(&self, start: u32, len: NonZeroU32, bound: AxisBox) -> Option<(Axis3, f32)> {
+        match self.strategy {
+            BVHSplitStrategy::SplitLargestAxis =>
+                self.find_best_split_largest_axis(bound),
+            BVHSplitStrategy::SurfaceAreaHeuristic { test_planes } =>
+                self.find_best_split_surface_area(start, len, bound, test_planes),
+        }
+    }
+
+    fn find_best_split_largest_axis(&self, bound: AxisBox) -> Option<(Axis3, f32)> {
         let extend = bound.high - bound.low;
         let split_axis = Axis3::ALL.into_iter()
             .max_by_key(|&a| Total::from_inner(extend.get(a)))
@@ -241,7 +257,7 @@ impl Builder<'_> {
         Some((split_axis, split_value))
     }
 
-    fn find_best_split(&self, start: u32, len: NonZeroU32, bound: AxisBox) -> Option<(Axis3, f32)> {
+    fn find_best_split_surface_area(&self, start: u32, len: NonZeroU32, bound: AxisBox, test_planes: Option<usize>) -> Option<(Axis3, f32)> {
         // no point even trying to split if we don't have enough nodes
         if len.get() < 2 {
             return None;
@@ -250,15 +266,29 @@ impl Builder<'_> {
         let mut best = None;
         let mut best_cost = f32::INFINITY;
 
-        for index in start..(start + len.get()) {
-            let centroid = object_centroid(self.get_object(index));
-            for axis in Axis3::ALL {
-                let value = centroid.get(axis);
+        let mut try_split = |axis: Axis3, value: f32| {
+            let cost = self.eval_potential_split(start, len, axis, value);
+            if cost <= best_cost {
+                best = Some((axis, value));
+                best_cost = cost;
+            }
+        };
 
-                let cost = self.eval_potential_split(start, len, axis, value);
-                if cost <= best_cost {
-                    best = Some((axis, value));
-                    best_cost = cost;
+        if let Some(test_planes) = test_planes.filter(|&test_planes| len.get() as usize > test_planes) {
+            // try a fixed number of test planes
+            for pi in 0..test_planes {
+                for axis in Axis3::ALL {
+                    let value = lerp((pi + 1) as f32 / test_planes as f32, bound.low.get(axis), bound.high.get(axis));
+                    try_split(axis, value)
+                }
+            }
+        } else {
+            // try each object centroid
+            for index in start..(start + len.get()) {
+                let centroid = object_centroid(self.get_object(index));
+                for axis in Axis3::ALL {
+                    let value = centroid.get(axis);
+                    try_split(axis, value);
                 }
             }
         }
@@ -354,6 +384,12 @@ fn object_centroid(object: &Object) -> Point3 {
 impl Debug for BVH {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "BVH(global={}, ids={}, nodes={})", self.global_ids.len(), self.ids.len(), self.nodes.len())
+    }
+}
+
+impl SmallId {
+    fn to_large(self) -> ObjectId {
+        ObjectId { index: self.index as usize }
     }
 }
 

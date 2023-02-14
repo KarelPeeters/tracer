@@ -626,6 +626,10 @@ impl Axis3Owner for Vec3 {
     }
 }
 
+pub fn lerp(t: f32, x: f32, y: f32) -> f32 {
+    t * x + (1.0 - t) * y
+}
+
 #[cfg(test)]
 mod test {
     use crate::common::math::{Point3, Transform, Vec3};
