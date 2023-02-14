@@ -196,15 +196,15 @@ pub fn random_tiles() -> Scene {
 
     objects.push(Object {
         shape: Shape::Sphere,
-        material: material_light(WHITE * 1000.0),
-        transform: Transform::translation(Vec3::new(0.0, 0.0, 15.0)),
+        material: material_light(WHITE * 10000.0),
+        transform: Transform::translation(Vec3::new(0.0, 0.0, 100.0)),
     });
 
-    for _ in 0..1000 {
+    for _ in 0..100_000 {
         let trans = Vec3::new(
-            rng.gen_range(-10.0..10.0),
-            rng.gen_range(-10.0..10.0),
-            rng.gen_range(-10.0..10.0),
+            rng.gen_range(-100.0..100.0),
+            rng.gen_range(-100.0..100.0),
+            rng.gen_range(-20.0..20.0),
         );
 
         let rot_axis = Unit::new_unchecked(Vec3::from_slice(&UnitSphere.sample(rng)));
@@ -223,11 +223,11 @@ pub fn random_tiles() -> Scene {
 
     Scene {
         objects,
-        sky_emission: color_gray(0.1),
+        sky_emission: color_gray(0.01),
         camera: Camera {
             fov_horizontal: Angle::degrees(90.0),
             transform: Transform::look_at(
-                Point3::new(0.0, -4.0, 10.0),
+                Point3::new(0.0, -4.0, 40.0),
                 Point3::origin(),
                 Vec3::y_axis(),
             ),
