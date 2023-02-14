@@ -1,5 +1,6 @@
 use std::fs::read_to_string;
 use std::marker::PhantomData;
+use std::path::Path;
 
 use rand::{Rng, SeedableRng};
 use rand::rngs::SmallRng;
@@ -228,17 +229,23 @@ pub fn colored_spheres() -> Scene {
     }
 }
 
-pub fn cube() -> Scene {
+pub fn obj_file(path: impl AsRef<Path>, transform: Transform) -> Scene {
     let mut objects = vec![
-        //floor
+        // floor
         Object {
             shape: Shape::Plane,
             material: material_diffuse(color_by_name("grey")),
             transform: Transform::rotation(Vec3::x_axis(), Angle::degrees(90.0)),
         },
+        // light
+        Object {
+            shape: Shape::Sphere,
+            material: material_light(WHITE * 1000.0),
+            transform: Transform::scaling(3.0) * Transform::translation(Vec3::new(10.0, 20.0, 10.0)),
+        },
     ];
 
-    let obj_string = read_to_string("ignored/models/cube.obj")
+    let obj_string = read_to_string(path)
         .expect("Failed to read obj file");
     let object_set = obj::parse(obj_string)
         .expect("Error while parsing obj file");
@@ -246,7 +253,7 @@ pub fn cube() -> Scene {
         .expect("No object found");
 
     let material_cube = material_diffuse(color_by_name("grey"));
-    objects.extend(obj_to_triangles(cube, material_cube, Default::default()));
+    objects.extend(obj_to_triangles(cube, material_cube, transform));
 
     Scene {
         objects,
@@ -254,7 +261,7 @@ pub fn cube() -> Scene {
         camera: Camera {
             fov_horizontal: Angle::degrees(90.0),
             transform: Transform::look_at(
-                Point3::new(0.0, 1.5, 5.0),
+                Point3::new(0.0, 1.5, 3.0),
                 Point3::new(0.0, 1.0, 0.0),
                 Vec3::y_axis(),
             ),
