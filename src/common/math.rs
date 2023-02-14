@@ -505,6 +505,30 @@ impl Transform {
 
         translate * rotate
     }
+
+    /// The transform that maps the unit axis vectors to the given targets.
+    /// Does not include a translation.
+    pub fn map_axes_to(tx: Vec3, ty: Vec3, tz: Vec3) -> Self {
+        let fwd = Matrix4::new([
+            [tx.x, ty.x, tz.x, 0.0],
+            [tx.y, ty.y, tz.y, 0.0],
+            [tx.z, ty.z, tz.z, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]);
+
+        let d = tx.x * ty.y * tz.z - tx.x * tz.y * ty.z -
+            ty.x * tx.y * tz.z + ty.x *
+            tz.y * tx.z + tz.x * tx.y *
+            ty.z - tz.x * ty.y * tx.z;
+        let inv = Matrix4::new([
+            [(ty.y * tz.z - tz.y * ty.z) / d, (-ty.x * tz.z + tz.x * ty.z) / d, (ty.x * tz.y - tz.x * ty.y) / d, 0.0],
+            [(-tx.y * tz.z + tz.y * tx.z) / d, (tx.x * tz.z - tz.x * tx.z) / d, (-tx.x * tz.y + tz.x * tx.y) / d, 0.0],
+            [(tx.y * ty.z - ty.y * tx.z) / d, (-tx.x * ty.z + ty.x * tx.z) / d, (tx.x * ty.y - ty.x * tx.y) / d, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ]);
+
+        Transform { fwd, inv }
+    }
 }
 
 impl Mul<Transform> for Transform {
@@ -599,5 +623,47 @@ impl Axis3Owner for Vec3 {
             Axis3::Y => self.y,
             Axis3::Z => self.z,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::common::math::{Point3, Transform, Vec3};
+
+    fn assert_close_vec3(left: Vec3, right: Vec3) {
+        let delta = left - right;
+        let max_delta = delta.x.max(delta.y).max(delta.z);
+        assert!(
+            left.is_finite() && right.is_finite() && max_delta < 0.0001,
+            "Expected close, finite values, got {left:?} and {right:?}"
+        );
+    }
+
+    fn assert_close_point3(left: Point3, right: Point3) {
+        assert_close_vec3(left - Point3::origin(), right - Point3::origin());
+    }
+
+    #[test]
+    fn map_axes_to() {
+        let tx = Vec3::new(1.0, 2.0, 3.0);
+        let ty = Vec3::new(4.0, 5.0, 6.0);
+        let tz = Vec3::new(2.0, 4.0, 8.0);
+
+        let trans = Transform::map_axes_to(tx, ty, tz);
+
+        println!("{:?}", trans);
+
+        assert_close_vec3(tx, trans * *Vec3::x_axis());
+        assert_close_vec3(ty, trans * *Vec3::y_axis());
+        assert_close_vec3(tz, trans * *Vec3::z_axis());
+        assert_close_point3(Point3::origin(), trans * Point3::origin());
+
+        assert_close_vec3(*Vec3::x_axis(), trans.inv() * tx);
+        assert_close_vec3(*Vec3::y_axis(), trans.inv() * ty);
+        assert_close_vec3(*Vec3::z_axis(), trans.inv() * tz);
+        assert_close_point3(Point3::origin(), trans.inv() * Point3::origin());
+
+        let unit = trans.fwd * trans.inv;
+        println!("{:?}", unit);
     }
 }

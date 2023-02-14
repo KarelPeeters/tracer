@@ -1,7 +1,7 @@
 use wavefront_obj::obj;
 use wavefront_obj::obj::Primitive;
 
-use crate::common::math::{Point3, Transform};
+use crate::common::math::{Point3, Transform, Vec3};
 use crate::common::scene::{Material, Object, Shape};
 
 fn vertex_to_point(vertex: &obj::Vertex) -> Point3 {
@@ -9,22 +9,16 @@ fn vertex_to_point(vertex: &obj::Vertex) -> Point3 {
 }
 
 pub fn triangle_as_transform(a: Point3, b: Point3, c: Point3) -> Transform {
-    println!("Triangle with points {:?}, {:?}, {:?}", a, b, c);
+    let shift = Transform::translation(*Vec3::z_axis());
+    let axes_to_shift = Transform::map_axes_to(
+        Vec3::new(0.0, 0.0, 1.0),
+        Vec3::new(1.0, 0.0, 1.0),
+        Vec3::new(0.0, 1.0, 1.0)
+    );
+    let origin = Point3::origin();
+    let axes_to_target = Transform::map_axes_to(a - origin, b - origin, c - origin);
 
-    let db = b - a;
-    let dc = c - a;
-    let _n = -db.cross(dc);
-
-    todo!()
-
-    /*let transform = Transform::from_matrix_unchecked(Matrix4::new(
-        db.x, dc.x, n.x, a.x,
-        db.y, dc.y, n.y, a.y,
-        db.z, dc.z, n.z, a.z,
-        0.0, 0.0, 0.0, 1.0,
-    ));*/
-
-    // transform
+    axes_to_target * axes_to_shift.inv() * shift
 }
 
 pub fn obj_to_triangles(obj: &obj::Object, material: Material, transform: Transform) -> impl Iterator<Item=Object> + '_ {
