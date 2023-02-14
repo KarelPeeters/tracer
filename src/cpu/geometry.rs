@@ -54,7 +54,7 @@ pub struct ObjectHit {
 impl Hit {
     fn transform(&self, transform: Transform, direction: Unit<Vec3>) -> Hit {
         Hit {
-            t: self.t * (transform * (*direction)).norm(),
+            t: self.t / (transform.inv() * (*direction)).norm(),
             point: transform * self.point,
             normal: transform.inv_transpose_mul(*self.normal).normalized(),
         }
@@ -184,23 +184,27 @@ pub trait Intersect {
     fn sample<R: Rng>(&self, rng: &mut R) -> (f32, Point3);
 }
 
+fn intersect_transformed_shape(shape: Shape, transform: Transform, ray: &Ray) -> Option<Hit> {
+    let obj_ray = transform.inv() * ray;
+
+    let obj_hit = match shape {
+        Shape::Sphere => sphere_intersect(&obj_ray),
+        Shape::Plane => plane_intersect(&obj_ray),
+        Shape::Triangle => triangle_intersect(&obj_ray),
+        Shape::Square => square_intersect(&obj_ray),
+        Shape::Cylinder => cylinder_intersect(&obj_ray),
+    };
+    check_hit(&obj_hit);
+
+    let world_hit = obj_hit.map(|hit| hit.transform(transform, ray.direction));
+    check_hit(&world_hit);
+
+    world_hit
+}
+
 impl Intersect for Object {
     fn intersect(&self, ray: &Ray) -> Option<Hit> {
-        let obj_ray = self.transform.inv() * ray;
-
-        let obj_hit = match self.shape {
-            Shape::Sphere => sphere_intersect(&obj_ray),
-            Shape::Plane => plane_intersect(&obj_ray),
-            Shape::Triangle => triangle_intersect(&obj_ray),
-            Shape::Square => square_intersect(&obj_ray),
-            Shape::Cylinder => cylinder_intersect(&obj_ray),
-        };
-
-        check_hit(&obj_hit);
-        let world_hit = obj_hit.map(|hit| hit.transform(self.transform, ray.direction));
-        check_hit(&world_hit);
-
-        world_hit
+        intersect_transformed_shape(self.shape, self.transform, ray)
     }
 
     fn area_seen_from(&self, from: Point3) -> f32 {
@@ -238,4 +242,43 @@ fn check_hit(hit: &Option<Hit>) {
 fn clamp(x: f32, min: f32, max: f32) -> f32 {
     debug_assert!(min <= max);
     x.min(max).max(min)
+}
+
+#[cfg(test)]
+mod test {
+    use crate::common::math::{Norm, Point3, Vec3};
+    use crate::common::scene::Shape;
+    use crate::common::util::triangle_as_transform;
+    use crate::cpu::geometry::{intersect_transformed_shape, Ray};
+
+    #[test]
+    fn triangle_transform_dist() {
+        let origin = Point3::origin();
+
+        let transform = triangle_as_transform(
+            Point3::from_coords(*Vec3::x_axis()),
+            Point3::from_coords(*Vec3::y_axis()),
+            Point3::from_coords(*Vec3::z_axis()),
+        );
+        let triangle_center = Point3::from_coords((*Vec3::x_axis() + *Vec3::y_axis() + *Vec3::z_axis()) / 3.0);
+
+        let start = Point3::new(2.0, 2.0, 2.0);
+        let ray = Ray::new(
+            start,
+            (origin - start).normalized(),
+        );
+        let expected_dist = (triangle_center - start).norm();
+
+        println!("{:?}", transform);
+        println!("{:?}", ray);
+
+        let hit = intersect_transformed_shape(Shape::Triangle, transform, &ray).unwrap();
+
+        println!("center: {:?}", triangle_center);
+
+        println!("expected t: {}", expected_dist);
+        println!("actual hit: {:?}", hit);
+
+        assert!((expected_dist - hit.t).abs() < 0.001);
+    }
 }
