@@ -178,7 +178,7 @@ impl ProgressHandler for PrintProgress {
             let elapsed = now - state.prev_time;
             let eta = Duration::try_from_secs_f32(elapsed.as_secs_f32() * (1.0 - progress) / delta).ok();
 
-            println!("Progress {:.03}, eta {:?}", progress, eta);
+            println!("Progress {:.03}, eta {:.01?}", progress, eta);
 
             state.prev_printed = progress;
             state.prev_time = now;
