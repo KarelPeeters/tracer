@@ -23,6 +23,8 @@ pub struct CpuRenderSettings {
 pub enum StopCondition {
     SampleCount(u32),
     // TODO consider variance in neighborhood instead of only single pixel
+    // TODO rel_var should really be `var / mag / "difference in color between neighboring pixels"`,
+    //   currently we just end up focusing on edges instead of surfaces
     Variance { min_samples: u32, max_relative_variance: f32 },
 }
 

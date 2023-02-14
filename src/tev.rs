@@ -35,6 +35,7 @@ impl ProgressHandler for TevProgress {
             grab_focus: false,
             width,
             height,
+            // TODO send variance, samples, ... as well
             channel_names: &["R", "G", "B"],
         });
 
