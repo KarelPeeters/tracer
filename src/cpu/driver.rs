@@ -1,5 +1,6 @@
 use std::cmp::min;
 use std::ops::Range;
+use std::time::{Duration, Instant};
 
 use imgref::ImgVec;
 use rand::prelude::SliceRandom;
@@ -139,6 +140,7 @@ pub struct PrintProgressState {
     total_pixels: u64,
     finished_pixels: u64,
     prev_printed: f32,
+    prev_time: Instant,
 }
 
 impl ProgressHandler for PrintProgress {
@@ -151,15 +153,24 @@ impl ProgressHandler for PrintProgress {
             total_pixels: (width as u64) * (height as u64),
             finished_pixels: 0,
             prev_printed: f32::NEG_INFINITY,
+            prev_time: Instant::now(),
         }
     }
 
     fn update(state: &mut Self::State, block: Block, _: &Vec<PixelResult>) {
         state.finished_pixels += (block.width as u64) * (block.height as u64);
         let progress = (state.finished_pixels as f32) / (state.total_pixels as f32);
-        if progress - state.prev_printed >= 0.01 || progress == 1.0 {
+        let delta = progress - state.prev_printed;
+
+        if delta >= 0.01 || progress == 1.0 {
+            let now = Instant::now();
+            let elapsed = now - state.prev_time;
+            let eta = Duration::try_from_secs_f32(elapsed.as_secs_f32()  * (1.0 - progress) / delta).ok();
+
+            println!("Progress {:.03}, eta {:?}", progress, eta);
+
             state.prev_printed = progress;
-            println!("Progress {:.03}", progress);
+            state.prev_time = now;
         }
     }
 }
