@@ -83,7 +83,7 @@ impl BVH {
         }
     }
 
-    fn first_hit_impl(&self, objects: &[Object], ray: &Ray, node: u32, mut t_max: f32) -> Option<ObjectHit> {
+    fn first_hit_impl(&self, objects: &[Object], ray: &Ray, filter: &impl Fn(&Object) -> bool, node: u32, mut t_max: f32) -> Option<ObjectHit> {
         let node = &self.nodes[node as usize];
 
         if node.bound.intersects(ray).is_none() {
@@ -93,7 +93,7 @@ impl BVH {
         match node.kind {
             NodeKind::Leaf { start, len } => {
                 let objects = (start..start + len.get()).map(|index| &objects[self.ids[index as usize].index as usize]);
-                first_hit(objects, ray).map(|(index, hit)| {
+                first_hit(objects, ray, filter).map(|(index, hit)| {
                     let id = self.ids[start as usize + index].to_large();
                     ObjectHit { id, hit }
                 })
@@ -113,12 +113,12 @@ impl BVH {
                 let mut best = None;
 
                 if first_t < t_max {
-                    let first = self.first_hit_impl(objects, ray, first_index, t_max);
+                    let first = self.first_hit_impl(objects, ray, filter, first_index, t_max);
                     t_max = f32::min(t_max, first.as_ref().map_or(f32::INFINITY, |hit| hit.hit.t));
                     best = ObjectHit::closest_option(best, first);
                 }
                 if second_t < t_max {
-                    let second = self.first_hit_impl(objects, ray, second_index, t_max);
+                    let second = self.first_hit_impl(objects, ray, filter, second_index, t_max);
                     best = ObjectHit::closest_option(best, second);
                 }
 
@@ -129,8 +129,9 @@ impl BVH {
 }
 
 impl Accel for BVH {
-    fn first_hit(&self, objects: &[Object], ray: &Ray) -> Option<ObjectHit> {
-        let global_hit = first_hit(self.global_ids.iter().map(|id| &objects[id.index as usize]), ray)
+    fn first_hit(&self, objects: &[Object], ray: &Ray, filter: impl Fn(&Object) -> bool) -> Option<ObjectHit> {
+        let global_objects = self.global_ids.iter().map(|id| &objects[id.index as usize]);
+        let global_hit = first_hit(global_objects, ray, &filter)
             .map(|(index, hit)| ObjectHit { id: self.global_ids[index].to_large(), hit });
 
         if self.nodes.is_empty() {
@@ -139,7 +140,7 @@ impl Accel for BVH {
 
         // TODO consider making t_max part of Ray everywhere
         let t_max = global_hit.as_ref().map_or(f32::INFINITY, |hit| hit.hit.t);
-        let tree_hit = self.first_hit_impl(objects, ray, 0, t_max);
+        let tree_hit = self.first_hit_impl(objects, ray, &filter, 0, t_max);
 
         ObjectHit::closest_option(global_hit, tree_hit)
     }

@@ -78,8 +78,8 @@ impl Octree {
 }
 
 impl Accel for Octree {
-    fn first_hit(&self, objects: &[Object], ray: &Ray) -> Option<ObjectHit> {
-        self.nodes[self.node_root].first_hit(self, objects, ray, f32::INFINITY)
+    fn first_hit(&self, objects: &[Object], ray: &Ray, filter: impl Fn(&Object) -> bool) -> Option<ObjectHit> {
+        self.nodes[self.node_root].first_hit(self, objects, ray, &filter, f32::INFINITY)
     }
 }
 
@@ -196,11 +196,11 @@ impl Builder<'_> {
 }
 
 impl Node {
-    fn first_hit<'a>(&self, octree: &'a Octree, objects: &[Object], ray: &Ray, mut t_max: f32) -> Option<ObjectHit> {
+    fn first_hit<'a>(&self, octree: &'a Octree, objects: &[Object], ray: &Ray, filter: &impl Fn(&Object) -> bool, mut t_max: f32) -> Option<ObjectHit> {
         match self {
             Node::Flat(range) => {
                 let objects = range.clone().map(|i| &objects[octree.ids[i].index]);
-                first_hit(objects, ray).map(|(index, hit)| {
+                first_hit(objects, ray, filter).map(|(index, hit)| {
                     ObjectHit {
                         id: octree.ids[range.start + index],
                         hit,
@@ -213,7 +213,7 @@ impl Node {
 
                 // compute start hit
                 let start_node = if start_in_lower { node_lower } else { node_higher };
-                let start_hit = octree.nodes[start_node].first_hit(octree, objects, ray, t_max);
+                let start_hit = octree.nodes[start_node].first_hit(octree, objects, ray, filter,t_max);
 
                 if let Some(hit) = start_hit.as_ref() {
                     t_max = f32::min(t_max, hit.hit.t);
@@ -222,7 +222,7 @@ impl Node {
                 // compute end hit if end is different from start
                 if end_in_lower != start_in_lower {
                     let end_node = if end_in_lower { node_lower } else { node_higher };
-                    let end_hit = octree.nodes[end_node].first_hit(octree, objects, ray, t_max);
+                    let end_hit = octree.nodes[end_node].first_hit(octree, objects, ray, filter , t_max);
                     ObjectHit::closest_option(start_hit, end_hit)
                 } else {
                     start_hit

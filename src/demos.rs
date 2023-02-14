@@ -79,9 +79,9 @@ pub fn material_light(emission: Color) -> Material {
     }
 }
 
-pub fn material_fixed(color: Color) -> Material {
+pub fn material_fixed(color: Color, camera_only: bool) -> Material {
     Material {
-        material_type: MaterialType::Fixed,
+        material_type: MaterialType::Fixed { camera_only },
         albedo: color,
         emission: BLACK,
         inside: VACUUM,
@@ -91,10 +91,10 @@ pub fn material_fixed(color: Color) -> Material {
 
 pub fn axes(brightness: f32, radius_axis: f32, radius_dot: Option<f32>, cube_dots: bool) -> Vec<Object> {
     let scale_axis = Transform::scaling(radius_axis);
-    let material_x = material_fixed(Color::new(brightness, 0.0, 0.0));
-    let material_y = material_fixed(Color::new(0.0, brightness, 0.0));
-    let material_z = material_fixed(Color::new(0.0, 0.0, brightness));
-    let material_cube = material_fixed(BLACK);
+    let material_x = material_fixed(Color::new(brightness, 0.0, 0.0), true);
+    let material_y = material_fixed(Color::new(0.0, brightness, 0.0), true);
+    let material_z = material_fixed(Color::new(0.0, 0.0, brightness), true);
+    let material_cube = material_fixed(BLACK, true);
 
     let mut result = vec![];
 

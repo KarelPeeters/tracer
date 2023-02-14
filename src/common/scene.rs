@@ -16,9 +16,9 @@ pub enum Shape {
     Cylinder,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum MaterialType {
-    Fixed,
+    Fixed { camera_only: bool },
     Diffuse,
     Mirror,
     Transparent,

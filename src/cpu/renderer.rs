@@ -59,7 +59,18 @@ impl<A: Accel> RenderStructure<'_, A> {
 
         while !settings.stop_condition.is_done(&estimator) {
             let ray = self.camera.ray(rng, x, y);
-            let color = trace_ray(scene, &self.accel, &self.lights, settings.strategy, &ray, rng, settings.max_bounces, true, scene.camera.medium);
+            let color = trace_ray(
+                scene,
+                &self.accel,
+                &self.lights,
+                settings.strategy,
+                &ray,
+                true,
+                rng,
+                settings.max_bounces,
+                true,
+                scene.camera.medium,
+            );
             estimator.update(color);
         }
 
@@ -150,7 +161,8 @@ fn sample_lights<R: Rng>(scene: &Scene, accel: &impl Accel, lights: &[ObjectId],
         let (weight, target) = light.sample(rng);
         let light_ray = Ray { start: next_start, direction: (target - next_start).normalized() };
 
-        match accel.first_hit(&scene.objects, &light_ray) {
+        // TODO is this actually correct for transparent objects ?
+        match accel.first_hit(&scene.objects, &light_ray, filter_fixed_camera_only(false)) {
             // the light is unobstructed, it's the first thing we hit again
             Some(ObjectHit { id: object, hit: light_hit }) if object == light_id => {
                 let abs_cos = light_ray.direction.dot(*hit.normal).abs();
@@ -168,12 +180,22 @@ fn sample_lights<R: Rng>(scene: &Scene, accel: &impl Accel, lights: &[ObjectId],
     result
 }
 
+fn filter_fixed_camera_only(is_camera_ray: bool) -> impl Fn(&Object) -> bool {
+    move |o: &Object| {
+        match o.material.material_type {
+            MaterialType::Fixed {  camera_only } => is_camera_ray || !camera_only,
+            _ => true,
+        }
+    }
+}
+
 fn trace_ray<'a, R: Rng>(
     scene: &Scene,
     accel: &'a impl Accel,
     lights: &[ObjectId],
     strategy: Strategy,
     ray: &Ray,
+    is_camera_ray: bool,
     rng: &mut R,
     bounces_left: u32,
     specular: bool,
@@ -183,11 +205,13 @@ fn trace_ray<'a, R: Rng>(
         return Color::new(0.0, 0.0, 0.0);
     }
 
-    let (t, result) = if let Some(object_hit) = accel.first_hit(&scene.objects, ray) {
+    let filter = filter_fixed_camera_only(is_camera_ray);
+    let (t, result) = if let Some(object_hit) = accel.first_hit(&scene.objects, ray, filter) {
         let ObjectHit { id: object, mut hit } = object_hit;
         let object = &scene.objects[object.index];
 
-        if let MaterialType::Fixed = object.material.material_type {
+        if let MaterialType::Fixed { camera_only } = object.material.material_type {
+            debug_assert!(is_camera_ray || !camera_only);
             return object.material.albedo;
         }
 
@@ -232,7 +256,7 @@ fn trace_ray<'a, R: Rng>(
             direction: sample.direction,
         };
         let next_medium = if sample.crosses_surface { next_medium } else { medium };
-        let next_contribution = trace_ray(scene, accel, lights, strategy, &next_ray, rng, bounces_left - 1, sample.specular, next_medium);
+        let next_contribution = trace_ray(scene, accel, lights, strategy, &next_ray, false, rng, bounces_left - 1, sample.specular, next_medium);
 
         result += object.material.albedo * next_contribution * sample.weight;
 
@@ -262,7 +286,7 @@ struct SampleInfo {
 
 fn sample_direction<R: Rng>(ray: &Ray, hit: &Hit, material_type: MaterialType, refract_ratio: f32, rng: &mut R) -> SampleInfo {
     match material_type {
-        MaterialType::Fixed => panic!("Can't sample direction for MaterialType::Fixed"),
+        MaterialType::Fixed { .. } => panic!("Can't sample direction for {material_type:?}"),
         MaterialType::Diffuse => {
             // cosine weighed sampling from the hemisphere pointing towards hit.normal
             let disk = Vec2::from_slice(&UnitDisc.sample(rng));
