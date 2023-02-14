@@ -134,6 +134,14 @@ impl<P: ProgressHandler> CpuRenderer<P> {
     }
 }
 
+pub struct NoProgress;
+
+impl ProgressHandler for NoProgress {
+    type State = ();
+    fn init(self, _: u32, _: u32) {}
+    fn update(_: &mut Self::State, _: Block, _: &Vec<PixelResult>) {}
+}
+
 pub struct PrintProgress;
 
 pub struct PrintProgressState {
@@ -165,7 +173,7 @@ impl ProgressHandler for PrintProgress {
         if delta >= 0.01 || progress == 1.0 {
             let now = Instant::now();
             let elapsed = now - state.prev_time;
-            let eta = Duration::try_from_secs_f32(elapsed.as_secs_f32()  * (1.0 - progress) / delta).ok();
+            let eta = Duration::try_from_secs_f32(elapsed.as_secs_f32() * (1.0 - progress) / delta).ok();
 
             println!("Progress {:.03}, eta {:?}", progress, eta);
 
