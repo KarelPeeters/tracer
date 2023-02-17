@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::{fs, io};
 use std::cmp::max;
 use std::net::TcpStream;
@@ -8,18 +6,11 @@ use std::time::Instant;
 
 use exr::prelude::WritableImage;
 use tev_client::TevClient;
-
-use crate::common::util::lower_process_priority;
-use crate::cpu::{CombinedProgress, CpuRenderer, CpuRenderSettings, PrintProgress, StopCondition, Strategy};
-use crate::images::{to_discrete_image, to_exr_image};
-use crate::tev::TevProgress;
-
-pub mod common;
-pub mod cpu;
-
-mod demos;
-mod tev;
-mod images;
+use tracer::common::util::lower_process_priority;
+use tracer::cpu::{CombinedProgress, CpuRenderer, CpuRenderSettings, PrintProgress, StopCondition, Strategy};
+use tracer::demos;
+use tracer::images::{to_discrete_image, to_exr_image};
+use tracer::tev::TevProgress;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     lower_process_priority();

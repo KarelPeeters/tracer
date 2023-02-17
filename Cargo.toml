@@ -1,27 +1,7 @@
-[package]
-name = "tracer"
-version = "0.1.0"
-authors = ["Karel <karel.peeters.leuven@gmail.com>"]
-edition = "2021"
-
-# TODO go though deps, update, remove entirely, remove features
-[dependencies]
-image = { version = "0.23.14", default-features = false, features = ["png"] }
-palette = "0.6.0"
-rand = { version = "0.8.4", features = ["small_rng"] }
-rand_distr = "0.4.2"
-rayon = "1.5.1"
-wavefront_obj = "10.0.0"
-imgref = "1.9.1"
-exr = "1.4.1"
-windows = { version = "0.29.0", features = ["Win32_System_Threading", "Win32_Foundation"] }
-tev_client = "0.5.2"
-itertools = "0.10.3"
-crossbeam = "0.8.1"
-num_cpus = "1.13.1"
-derive_more = "0.99.17"
-decorum = { version = "0.3.1", default-features = false }
-
+[workspace]
+members = [
+    "tracer",
+]
 
 [profile.dev]
 opt-level = 1
