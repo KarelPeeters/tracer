@@ -4,8 +4,8 @@ use exr::math::Vec2;
 use exr::meta::attribute::{ChannelDescription, SampleType};
 use imgref::ImgRef;
 
+use crate::common::progress::PixelResult;
 use crate::common::scene::Color;
-use crate::cpu::PixelResult;
 
 type DiscreteImage = image::ImageBuffer<image::Rgb<u8>, Vec<u8>>;
 
@@ -36,6 +36,7 @@ pub fn to_discrete_image(image: ImgRef<PixelResult>) -> (DiscreteImage, Discrete
 }
 
 pub struct ImageWrapper<'a>(ImgRef<'a, PixelResult>);
+
 pub type ChannelTuple = (ChannelDescription, ChannelDescription, ChannelDescription, ChannelDescription, ChannelDescription, ChannelDescription, ChannelDescription, ChannelDescription, ChannelDescription, ChannelDescription);
 
 /// Convert the given image to the exr file format.

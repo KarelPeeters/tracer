@@ -5,6 +5,7 @@ use rand::Rng;
 use rand_distr::UnitDisc;
 
 use crate::common::math::{Norm, Point3, Transform, Unit, Vec2, Vec3};
+use crate::common::progress::PixelResult;
 use crate::common::scene::{Camera, Color, MaterialType, Medium, Object, Scene};
 use crate::cpu::accel::{Accel, ObjectId};
 use crate::cpu::geometry::{Hit, Intersect, ObjectHit, Ray};
@@ -32,14 +33,6 @@ pub enum StopCondition {
 pub enum Strategy {
     Simple,
     SampleLights,
-}
-
-#[derive(Debug, Default, Copy, Clone)]
-pub struct PixelResult {
-    pub color: Color,
-    pub variance: Color,
-    pub rel_variance: Color,
-    pub samples: u32,
 }
 
 pub struct RenderStructure<'a, A> {

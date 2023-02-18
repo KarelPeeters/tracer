@@ -1,48 +1,20 @@
 use std::cmp::min;
-use std::ops::Range;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use imgref::ImgVec;
 use rand::prelude::SliceRandom;
 use rand::thread_rng;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use crate::common::progress::{Block, PixelResult, ProgressHandler};
 
 use crate::common::scene::Scene;
 use crate::cpu::accel::ObjectId;
 use crate::cpu::accel::bvh::{BVH, BVHSplitStrategy};
-use crate::cpu::renderer::{CpuRenderSettings, is_light, PixelResult, RayCamera, RenderStructure};
+use crate::cpu::renderer::{CpuRenderSettings, is_light, RayCamera, RenderStructure};
 
 pub struct CpuRenderer<P: ProgressHandler> {
     pub settings: CpuRenderSettings,
     pub progress_handler: P,
-}
-
-pub trait ProgressHandler: Send {
-    type State: Send + 'static;
-    fn init(self, width: u32, height: u32) -> Self::State;
-    fn update(state: &mut Self::State, block: Block, pixels: &Vec<PixelResult>);
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct Block {
-    pub x: u32,
-    pub y: u32,
-    pub width: u32,
-    pub height: u32,
-}
-
-//TODO write a proper iterator for the coords in Block instead
-//  * iterate over y slower than x!
-//  * be careful about empty x/y ranges!
-//  * write a custom fold and size_hint ugh this is getting annoying?
-impl Block {
-    fn x_range(self) -> Range<u32> {
-        self.x..(self.x + self.width)
-    }
-
-    fn y_range(self) -> Range<u32> {
-        self.y..(self.y + self.height)
-    }
 }
 
 fn split_into_blocks(width: u32, height: u32) -> Vec<Block> {
@@ -134,78 +106,5 @@ impl<P: ProgressHandler> CpuRenderer<P> {
         let result = collector_handle.join()
             .expect("Joining collector thread deadlocked?");
         result
-    }
-}
-
-pub struct NoProgress;
-
-impl ProgressHandler for NoProgress {
-    type State = ();
-    fn init(self, _: u32, _: u32) {}
-    fn update(_: &mut Self::State, _: Block, _: &Vec<PixelResult>) {}
-}
-
-pub struct PrintProgress;
-
-pub struct PrintProgressState {
-    total_pixels: u64,
-    finished_pixels: u64,
-    prev_printed: f32,
-    prev_time: Instant,
-}
-
-impl ProgressHandler for PrintProgress {
-    type State = PrintProgressState;
-
-    fn init(self, width: u32, height: u32) -> Self::State {
-        println!("Progress {:.03}", 0.0);
-
-        PrintProgressState {
-            total_pixels: (width as u64) * (height as u64),
-            finished_pixels: 0,
-            prev_printed: f32::NEG_INFINITY,
-            prev_time: Instant::now(),
-        }
-    }
-
-    fn update(state: &mut Self::State, block: Block, _: &Vec<PixelResult>) {
-        state.finished_pixels += (block.width as u64) * (block.height as u64);
-        let progress = (state.finished_pixels as f32) / (state.total_pixels as f32);
-        let delta = progress - state.prev_printed;
-
-        if delta >= 0.01 || progress == 1.0 {
-            let now = Instant::now();
-            let elapsed = now - state.prev_time;
-            let eta = Duration::try_from_secs_f32(elapsed.as_secs_f32() * (1.0 - progress) / delta).ok();
-
-            println!("Progress {:.03}, eta {:.01?}", progress, eta);
-
-            state.prev_printed = progress;
-            state.prev_time = now;
-        }
-    }
-}
-
-pub struct CombinedProgress<L: ProgressHandler, R: ProgressHandler> {
-    left: L,
-    right: R,
-}
-
-impl<L: ProgressHandler, R: ProgressHandler> CombinedProgress<L, R> {
-    pub fn new(left: L, right: R) -> Self {
-        CombinedProgress { left, right }
-    }
-}
-
-impl<L: ProgressHandler, R: ProgressHandler> ProgressHandler for CombinedProgress<L, R> {
-    type State = (L::State, R::State);
-
-    fn init(self, width: u32, height: u32) -> Self::State {
-        (L::init(self.left, width, height), R::init(self.right, width, height))
-    }
-
-    fn update(state: &mut Self::State, block: Block, pixels: &Vec<PixelResult>) {
-        L::update(&mut state.0, block, pixels);
-        R::update(&mut state.1, block, pixels);
     }
 }

@@ -1,5 +1,5 @@
-pub use driver::{Block, CombinedProgress, CpuRenderer, PrintProgress, ProgressHandler, NoProgress};
-pub use renderer::{CpuRenderSettings, PixelResult, StopCondition, Strategy};
+pub use driver::CpuRenderer;
+pub use renderer::{CpuRenderSettings, StopCondition, Strategy};
 
 mod driver;
 mod renderer;

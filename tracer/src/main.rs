@@ -6,8 +6,9 @@ use std::time::Instant;
 
 use exr::prelude::WritableImage;
 use tev_client::TevClient;
+use tracer::common::progress::{CombinedProgress, PrintProgress};
 use tracer::common::util::lower_process_priority;
-use tracer::cpu::{CombinedProgress, CpuRenderer, CpuRenderSettings, PrintProgress, StopCondition, Strategy};
+use tracer::cpu::{CpuRenderer, CpuRenderSettings, StopCondition, Strategy};
 use tracer::demos;
 use tracer::images::{to_discrete_image, to_exr_image};
 use tracer::tev::TevProgress;

@@ -1,6 +1,6 @@
 use tev_client::{PacketCloseImage, PacketCreateImage, PacketUpdateImage, TevClient, TevPacket};
 
-use crate::cpu::{Block, PixelResult, ProgressHandler};
+use crate::common::progress::{Block, PixelResult, ProgressHandler};
 
 pub struct TevProgress {
     name: String,
@@ -15,7 +15,7 @@ impl TevProgress {
     pub fn try_send<'s, P: TevPacket + 's>(&'s mut self, packet: impl FnOnce(&'s str) -> P) {
         if let Some(client) = &mut self.client {
             let packet = packet(&self.name);
-            if let Result::Err(e) = client.send(packet) {
+            if let Err(e) = client.send(packet) {
                 println!("Communication with tev failed, future commands will not be sent.\n{:?}", e);
                 self.client = None;
             }
