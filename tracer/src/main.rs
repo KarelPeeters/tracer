@@ -6,9 +6,12 @@ use std::time::Instant;
 
 use exr::prelude::WritableImage;
 use tev_client::TevClient;
+
 use tracer::common::progress::{CombinedProgress, PrintProgress};
+use tracer::common::scene::Object;
 use tracer::common::util::lower_process_priority;
 use tracer::cpu::{CpuRenderer, CpuRenderSettings, StopCondition, Strategy};
+use tracer::cpu::accel::bvh::{BVH, BVHSplitStrategy};
 use tracer::demos;
 use tracer::images::{to_discrete_image, to_exr_image};
 use tracer::tev::TevProgress;
@@ -27,7 +30,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             max_bounces: 8,
             anti_alias: true,
             strategy: Strategy::SampleLights,
-            octree_max_flat_size: 8,
         },
         progress_handler: CombinedProgress::new(
             PrintProgress,
@@ -38,9 +40,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let div = 1;
     let (width, height) = (1920 / div, 1080 / div);
 
+    let accel = |o: &[Object]| BVH::new(o, BVHSplitStrategy::default());
+    // let accel = |o: &[Object]| Octree::new(o, 16);
+    // let accel = |_: &[Object]| NoAccel;
+
     let settings = renderer.settings.clone();
     let start = Instant::now();
-    let image = renderer.render(&scene, width, height);
+    let image = renderer.render(&scene, width, height, accel);
     let elapsed = Instant::now() - start;
     println!("Render took {}s", elapsed.as_secs_f32());
 

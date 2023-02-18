@@ -17,7 +17,6 @@ pub struct CpuRenderSettings {
     pub max_bounces: u32,
     pub anti_alias: bool,
     pub strategy: Strategy,
-    pub octree_max_flat_size: usize,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -35,7 +34,7 @@ pub enum Strategy {
     SampleLights,
 }
 
-pub struct RenderStructure<'a, A> {
+pub struct CpuPreparedScene<'a, A> {
     pub scene: &'a Scene,
     pub camera: RayCamera,
     pub accel: A,
@@ -43,7 +42,23 @@ pub struct RenderStructure<'a, A> {
     pub settings: CpuRenderSettings,
 }
 
-impl<A: Accel> RenderStructure<'_, A> {
+impl<'a, A: Accel> CpuPreparedScene<'a, A> {
+    pub fn new(scene: &'a Scene, settings: CpuRenderSettings, accel: A, width: u32, height: u32) -> Self {
+        let camera = RayCamera::new(&scene.camera, settings.anti_alias, width, height);
+
+        let lights = scene.objects.iter().enumerate().filter_map(|(id, object)| {
+            if is_light(object) { Some(ObjectId::new(id)) } else { None }
+        }).collect();
+
+        CpuPreparedScene {
+            scene,
+            camera,
+            accel,
+            lights,
+            settings,
+        }
+    }
+
     pub fn calculate_pixel(&self, rng: &mut impl Rng, x: u32, y: u32) -> PixelResult {
         let settings = &self.settings;
         let scene = self.scene;
@@ -176,7 +191,7 @@ fn sample_lights<R: Rng>(scene: &Scene, accel: &impl Accel, lights: &[ObjectId],
 fn filter_fixed_camera_only(is_camera_ray: bool) -> impl Fn(&Object) -> bool {
     move |o: &Object| {
         match o.material.material_type {
-            MaterialType::Fixed {  camera_only } => is_camera_ray || !camera_only,
+            MaterialType::Fixed { camera_only } => is_camera_ray || !camera_only,
             _ => true,
         }
     }

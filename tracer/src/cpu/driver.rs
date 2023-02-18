@@ -5,12 +5,11 @@ use imgref::ImgVec;
 use rand::prelude::SliceRandom;
 use rand::thread_rng;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use crate::common::progress::{Block, PixelResult, ProgressHandler};
 
-use crate::common::scene::Scene;
-use crate::cpu::accel::ObjectId;
-use crate::cpu::accel::bvh::{BVH, BVHSplitStrategy};
-use crate::cpu::renderer::{CpuRenderSettings, is_light, RayCamera, RenderStructure};
+use crate::common::progress::{Block, PixelResult, ProgressHandler};
+use crate::common::scene::{Object, Scene};
+use crate::cpu::accel::Accel;
+use crate::cpu::renderer::{CpuPreparedScene, CpuRenderSettings};
 
 pub struct CpuRenderer<P: ProgressHandler> {
     pub settings: CpuRenderSettings,
@@ -36,14 +35,14 @@ fn split_into_blocks(width: u32, height: u32) -> Vec<Block> {
 }
 
 impl<P: ProgressHandler> CpuRenderer<P> {
-    pub fn render(self, scene: &Scene, width: u32, height: u32) -> ImgVec<PixelResult> {
-        println!("Building accelerator");
+    pub fn render<A: Accel>(self, scene: &Scene, width: u32, height: u32, accel: impl FnOnce(&[Object]) -> A) -> ImgVec<PixelResult> {
+        println!("Building accel");
         let start = Instant::now();
-        let accel = BVH::new(&scene.objects, BVHSplitStrategy::default());
-        // let accel = Octree::new(&scene.objects, self.settings.octree_max_flat_size);
-        // let accel = NoAccel;
+        let accel = accel(&scene.objects);
         println!("  {:?}", accel);
         println!("  took {:?}", start.elapsed());
+
+        let prepared_scene = CpuPreparedScene::new(scene, self.settings, accel, width, height);
 
         let mut progress_handler = self.progress_handler.init(width, height);
 
@@ -70,22 +69,6 @@ impl<P: ProgressHandler> CpuRenderer<P> {
             target
         }).expect("Failed to spawn collector thread");
 
-        let settings = self.settings;
-        let camera = RayCamera::new(&scene.camera, settings.anti_alias, width, height);
-
-        // pre-filter lights
-        let lights = scene.objects.iter().enumerate().filter_map(|(id, object)| {
-            if is_light(object) { Some(ObjectId::new(id)) } else { None }
-        }).collect();
-
-        let structure = RenderStructure {
-            scene,
-            camera,
-            accel,
-            lights,
-            settings,
-        };
-
         let mut blocks = split_into_blocks(width, height);
         blocks.shuffle(&mut thread_rng());
 
@@ -94,7 +77,7 @@ impl<P: ProgressHandler> CpuRenderer<P> {
             let mut data = Vec::new();
             for y in block.y_range() {
                 for x in block.x_range() {
-                    data.push(structure.calculate_pixel(rng, x, y))
+                    data.push(prepared_scene.calculate_pixel(rng, x, y))
                 }
             }
 

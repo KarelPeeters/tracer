@@ -16,7 +16,7 @@ pub struct ObjectId {
     pub index: usize,
 }
 
-pub trait Accel: Debug {
+pub trait Accel: Debug + Sync {
     fn first_hit(&self, objects: &[Object], ray: &Ray, filter: impl Fn(&Object) -> bool) -> Option<ObjectHit>;
 }
 

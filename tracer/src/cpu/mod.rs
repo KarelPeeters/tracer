@@ -1,8 +1,8 @@
 pub use driver::CpuRenderer;
-pub use renderer::{CpuRenderSettings, StopCondition, Strategy};
+pub use renderer::{CpuPreparedScene, CpuRenderSettings, StopCondition, Strategy};
 
 mod driver;
 mod renderer;
 mod geometry;
 mod stats;
-mod accel;
+pub mod accel;
