@@ -60,25 +60,10 @@ impl<'a, A: Accel> CpuPreparedScene<'a, A> {
     }
 
     pub fn calculate_pixel(&self, rng: &mut impl Rng, x: u32, y: u32) -> PixelResult {
-        let settings = &self.settings;
-        let scene = self.scene;
-
         let mut estimator = ColorVarianceEstimator::default();
 
-        while !settings.stop_condition.is_done(&estimator) {
-            let ray = self.camera.ray(rng, x, y);
-            let color = trace_ray(
-                scene,
-                &self.accel,
-                &self.lights,
-                settings.strategy,
-                &ray,
-                true,
-                rng,
-                settings.max_bounces,
-                true,
-                scene.camera.medium,
-            );
+        while !&self.settings.stop_condition.is_done(&estimator) {
+            let color = self.sample_pixel(rng, x, y);
             estimator.update(color);
         }
 
@@ -89,6 +74,21 @@ impl<'a, A: Accel> CpuPreparedScene<'a, A> {
             rel_variance: variance / (estimator.mean + Color::new(1.0, 1.0, 1.0)),
             samples: estimator.count,
         }
+    }
+    
+    pub fn sample_pixel(&self, rng: &mut impl Rng, x: u32, y: u32) -> Color {
+        trace_ray(
+            self.scene,
+            &self.accel,
+            &self.lights,
+            self.settings.strategy,
+            &self.camera.ray(rng, x, y),
+            true,
+            rng,
+            self.settings.max_bounces,
+            true,
+            self.scene.camera.medium,
+        )
     }
 }
 

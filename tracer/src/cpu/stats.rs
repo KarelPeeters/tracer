@@ -4,7 +4,7 @@ use crate::common::scene::Color;
 /// [Welford's algorithm](https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm).
 ///
 /// Call `update` for each sample obtained.
-#[derive(Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ColorVarianceEstimator {
     pub count: u32,
     pub mean: Color,

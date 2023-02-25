@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "tracer",
+    "tracer-gui",
 ]
 
 [profile.dev]
