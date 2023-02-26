@@ -318,7 +318,6 @@ impl Sub<Point2> for Point2 {
     }
 }
 
-/// A matrix that behaves like a 4x4 matrix with the last row fixed as [0, 0, 0, 1]
 #[derive(Copy, Clone, PartialEq)]
 struct Matrix4 {
     rows: [[f32; 4]; 4],
@@ -417,7 +416,7 @@ impl Matrix4 {
         ])
     }
 
-    fn translation(translation: Vec3) -> Self {
+    fn translate(translation: Vec3) -> Self {
         Self::new([
             [1.0, 0.0, 0.0, translation.x],
             [0.0, 1.0, 0.0, translation.y],
@@ -426,7 +425,7 @@ impl Matrix4 {
         ])
     }
 
-    fn rotation(axis: Unit<Vec3>, angle: Angle) -> Self {
+    fn rotate(axis: Unit<Vec3>, angle: Angle) -> Self {
         let Vec3 { x, y, z } = *axis;
         let c = angle.radians.cos();
         let s = angle.radians.sin();
@@ -439,7 +438,7 @@ impl Matrix4 {
         ])
     }
 
-    fn scaling(scale: f32) -> Self {
+    fn scale(scale: f32) -> Self {
         debug_assert!(scale != 0.0);
         Self::new([
             [scale, 0.0, 0.0, 0.0],
@@ -471,30 +470,30 @@ impl Transform {
         Vec3::new(x, y, z)
     }
 
-    pub fn translation(translation: Vec3) -> Self {
+    pub fn translate(translation: Vec3) -> Self {
         Self {
-            fwd: Matrix4::translation(translation),
-            inv: Matrix4::translation(-translation),
+            fwd: Matrix4::translate(translation),
+            inv: Matrix4::translate(-translation),
         }
     }
 
-    pub fn rotation(axis: Unit<Vec3>, angle: Angle) -> Self {
+    pub fn rotate(axis: Unit<Vec3>, angle: Angle) -> Self {
         Self {
-            fwd: Matrix4::rotation(axis, angle),
-            inv: Matrix4::rotation(axis, -angle),
+            fwd: Matrix4::rotate(axis, angle),
+            inv: Matrix4::rotate(axis, -angle),
         }
     }
 
-    pub fn scaling(scale: f32) -> Self {
+    pub fn scale(scale: f32) -> Self {
         Transform {
-            fwd: Matrix4::scaling(scale),
-            inv: Matrix4::scaling(1.0 / scale),
+            fwd: Matrix4::scale(scale),
+            inv: Matrix4::scale(1.0 / scale),
         }
     }
 
     /// Translates the origin to `pos` and rotates vectors pointing in the negative Z direction towards `target`
     pub fn look_at(pos: Point3, target: Point3, up: Unit<Vec3>) -> Self {
-        let translate = Self::translation(pos.coords());
+        let translate = Self::translate(pos.coords());
         let direction = (target - pos).normalized();
 
         let rotate = Matrix4::face_towards(direction, up);

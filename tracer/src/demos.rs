@@ -90,7 +90,7 @@ pub fn material_fixed(color: Color, camera_only: bool) -> Material {
 }
 
 pub fn axes(brightness: f32, radius_axis: f32, radius_dot: Option<f32>, cube_dots: bool) -> Vec<Object> {
-    let scale_axis = Transform::scaling(radius_axis);
+    let scale_axis = Transform::scale(radius_axis);
     let material_x = material_fixed(Color::new(brightness, 0.0, 0.0), true);
     let material_y = material_fixed(Color::new(0.0, brightness, 0.0), true);
     let material_z = material_fixed(Color::new(0.0, 0.0, brightness), true);
@@ -101,7 +101,7 @@ pub fn axes(brightness: f32, radius_axis: f32, radius_dot: Option<f32>, cube_dot
     result.push(Object {
         shape: Shape::Cylinder,
         material: material_x,
-        transform: Transform::rotation(Vec3::z_axis(), Angle::degrees(90.0)) * scale_axis,
+        transform: Transform::rotate(Vec3::z_axis(), Angle::degrees(90.0)) * scale_axis,
     });
     result.push(Object {
         shape: Shape::Cylinder,
@@ -111,25 +111,25 @@ pub fn axes(brightness: f32, radius_axis: f32, radius_dot: Option<f32>, cube_dot
     result.push(Object {
         shape: Shape::Cylinder,
         material: material_z,
-        transform: Transform::rotation(Vec3::x_axis(), Angle::degrees(90.0)) * scale_axis,
+        transform: Transform::rotate(Vec3::x_axis(), Angle::degrees(90.0)) * scale_axis,
     });
 
     if let Some(radius_dot) = radius_dot {
-        let scale_dot = Transform::scaling(radius_dot);
+        let scale_dot = Transform::scale(radius_dot);
         result.push(Object {
             shape: Shape::Sphere,
             material: material_x,
-            transform: Transform::translation(Vec3::new(1.0, 0.0, 0.0)) * scale_dot,
+            transform: Transform::translate(Vec3::new(1.0, 0.0, 0.0)) * scale_dot,
         });
         result.push(Object {
             shape: Shape::Sphere,
             material: material_y,
-            transform: Transform::translation(Vec3::new(0.0, 1.0, 0.0)) * scale_dot,
+            transform: Transform::translate(Vec3::new(0.0, 1.0, 0.0)) * scale_dot,
         });
         result.push(Object {
             shape: Shape::Sphere,
             material: material_z,
-            transform: Transform::translation(Vec3::new(0.0, 0.0, 1.0)) * scale_dot,
+            transform: Transform::translate(Vec3::new(0.0, 0.0, 1.0)) * scale_dot,
         });
 
         if cube_dots {
@@ -143,7 +143,7 @@ pub fn axes(brightness: f32, radius_axis: f32, radius_dot: Option<f32>, cube_dot
                 result.push(Object {
                     shape: Shape::Sphere,
                     material: material_cube,
-                    transform: Transform::translation(coord) * scale_dot,
+                    transform: Transform::translate(coord) * scale_dot,
                 });
             }
         }
@@ -158,17 +158,17 @@ pub fn single_red_sphere() -> Scene {
             Object {
                 shape: Shape::Plane,
                 material: material_diffuse(color_by_name("grey")),
-                transform: Transform::rotation(Vec3::x_axis(), Angle::degrees(90.0)),
+                transform: Transform::rotate(Vec3::x_axis(), Angle::degrees(90.0)),
             },
             Object {
                 shape: Shape::Sphere,
                 material: material_glass(Color::new(1.0, 0.1, 0.1)),
-                transform: Transform::translation(Vec3::new(0.0, 1.0, 0.0)),
+                transform: Transform::translate(Vec3::new(0.0, 1.0, 0.0)),
             },
             Object {
                 shape: Shape::Sphere,
                 material: material_light(Color::new(1.0, 1.0, 1.0) * 1_000.0),
-                transform: Transform::translation(Vec3::new(10.0, 10.0, -5.0)),
+                transform: Transform::translate(Vec3::new(10.0, 10.0, -5.0)),
             },
         ],
         sky_emission: color_by_name("gray"),
@@ -191,29 +191,29 @@ pub fn colored_spheres() -> Scene {
             Object {
                 shape: Shape::Sphere,
                 material: material_light(Color::new(1.0, 1.0, 1.0) * 500.0),
-                transform: Transform::scaling(3.0) * Transform::translation(Vec3::new(10.0, 20.0, -10.0)),
+                transform: Transform::scale(3.0) * Transform::translate(Vec3::new(10.0, 20.0, -10.0)),
             },
             //floor
             Object {
                 shape: Shape::Plane,
                 material: material_diffuse(Color::new(0.9, 0.9, 0.9)),
-                transform: Transform::rotation(Vec3::x_axis(), Angle::degrees(90.0)),
+                transform: Transform::rotate(Vec3::x_axis(), Angle::degrees(90.0)),
             },
             //spheres
             Object {
                 shape: Shape::Sphere,
                 material: material_mixed(Color::new(1.0, 0.05, 0.05), 0.5),
-                transform: Transform::translation(Vec3::new(-3.0, 1.0, -5.0)),
+                transform: Transform::translate(Vec3::new(-3.0, 1.0, -5.0)),
             },
             Object {
                 shape: Shape::Sphere,
                 material: material_glass(Color::new(0.4, 0.4, 1.0)),
-                transform: Transform::translation(Vec3::new(0.0, 1.0, -5.0)),
+                transform: Transform::translate(Vec3::new(0.0, 1.0, -5.0)),
             },
             Object {
                 shape: Shape::Sphere,
                 material: material_mixed(Color::new(0.05, 1.0, 0.05), 0.5),
-                transform: Transform::translation(Vec3::new(3.0, 1.0, -5.0)),
+                transform: Transform::translate(Vec3::new(3.0, 1.0, -5.0)),
             },
         ],
         sky_emission: color_gray(0.1),
@@ -235,13 +235,13 @@ pub fn obj_file(path: impl AsRef<Path>, transform: Transform) -> Scene {
         Object {
             shape: Shape::Plane,
             material: material_diffuse(color_by_name("grey")),
-            transform: Transform::rotation(Vec3::x_axis(), Angle::degrees(90.0)),
+            transform: Transform::rotate(Vec3::x_axis(), Angle::degrees(90.0)),
         },
         // light
         Object {
             shape: Shape::Sphere,
             material: material_light(WHITE * 1000.0),
-            transform: Transform::scaling(3.0) * Transform::translation(Vec3::new(10.0, 20.0, 10.0)),
+            transform: Transform::scale(3.0) * Transform::translate(Vec3::new(10.0, 20.0, 10.0)),
         },
     ];
 
@@ -277,7 +277,7 @@ pub fn random_tiles() -> Scene {
     objects.push(Object {
         shape: Shape::Sphere,
         material: material_light(WHITE * 10000.0),
-        transform: Transform::translation(Vec3::new(0.0, 0.0, 100.0)),
+        transform: Transform::translate(Vec3::new(0.0, 0.0, 100.0)),
     });
 
     for _ in 0..100_000 {
@@ -292,7 +292,7 @@ pub fn random_tiles() -> Scene {
 
         let scale = rng.gen_range(0.5..2.0);
 
-        let transform = Transform::translation(trans) * Transform::rotation(rot_axis, rot_angle) * Transform::scaling(scale);
+        let transform = Transform::translate(trans) * Transform::rotate(rot_axis, rot_angle) * Transform::scale(scale);
 
         objects.push(Object {
             shape: Shape::Square,

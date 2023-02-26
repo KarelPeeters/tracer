@@ -9,7 +9,7 @@ fn vertex_to_point(vertex: &obj::Vertex) -> Point3 {
 }
 
 pub fn triangle_as_transform(a: Point3, b: Point3, c: Point3) -> Transform {
-    let shift = Transform::translation(*Vec3::z_axis());
+    let shift = Transform::translate(*Vec3::z_axis());
     let axes_to_shift = Transform::map_axes_to(
         Vec3::new(0.0, 0.0, 1.0),
         Vec3::new(1.0, 0.0, 1.0),
