@@ -7,6 +7,7 @@ pub enum Shape {
     /// Unit sphere with center at origin
     Sphere,
     /// Plane spanning the xy axes
+    // TODO not enough info, which point do rotations happen around?
     Plane,
     /// Triangle with corners at `(0,0,0), (1,0,0), (0,1,0)`
     Triangle,

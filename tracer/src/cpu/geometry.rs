@@ -249,7 +249,7 @@ mod test {
     use crate::common::math::{Norm, Point3, Vec3};
     use crate::common::scene::Shape;
     use crate::common::util::triangle_as_transform;
-
+    use crate::cpu::geometry::{intersect_transformed_shape, Ray};
 
     #[test]
     fn triangle_transform_dist() {

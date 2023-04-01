@@ -447,6 +447,10 @@ impl Matrix4 {
             [0.0, 0.0, 0.0, 1.0],
         ])
     }
+
+    fn is_finite(&self) -> bool {
+        self.rows.iter().all(|row| row.iter().all(|&x| x.is_finite()))
+    }
 }
 
 #[derive(Debug, Copy, Clone, Default, PartialEq)]
@@ -493,21 +497,24 @@ impl Transform {
 
     /// Translates the origin to `pos` and rotates vectors pointing in the negative Z direction towards `target`
     pub fn look_at(pos: Point3, target: Point3, up: Unit<Vec3>) -> Self {
-        let translate = Self::translate(pos.coords());
-        let direction = (target - pos).normalized();
+        let dir = (target - pos).normalized();
+        Self::look_in_dir(pos, dir, up)
+    }
 
-        let rotate = Matrix4::face_towards(direction, up);
+    pub fn look_in_dir(pos: Point3, dir: Unit<Vec3>, up: Unit<Vec3>) -> Self {
+        let rotate = Matrix4::face_towards(dir, up);
         let rotate = Self {
             fwd: rotate,
             inv: rotate.transpose(),
         };
 
+        let translate = Self::translate(pos.coords());
         translate * rotate
     }
 
     /// The transform that maps the unit axis vectors to the given targets.
     /// Does not include a translation.
-    pub fn map_axes_to(tx: Vec3, ty: Vec3, tz: Vec3) -> Self {
+    pub fn rotate_axes_to(tx: Vec3, ty: Vec3, tz: Vec3) -> Self {
         let fwd = Matrix4::new([
             [tx.x, ty.x, tz.x, 0.0],
             [tx.y, ty.y, tz.y, 0.0],
@@ -519,6 +526,9 @@ impl Transform {
             ty.x * tx.y * tz.z + ty.x *
             tz.y * tx.z + tz.x * tx.y *
             ty.z - tz.x * ty.y * tx.z;
+
+        debug_assert!(d.is_finite() && d != 0.0, "Got invalid determinant {} for mapping vectors {:?}, {:?}, {:?}", d, tx, ty, tz);
+
         let inv = Matrix4::new([
             [(ty.y * tz.z - tz.y * ty.z) / d, (-ty.x * tz.z + tz.x * ty.z) / d, (ty.x * tz.y - tz.x * ty.y) / d, 0.0],
             [(-tx.y * tz.z + tz.y * tx.z) / d, (tx.x * tz.z - tz.x * tx.z) / d, (-tx.x * tz.y + tz.x * tx.y) / d, 0.0],
@@ -527,6 +537,10 @@ impl Transform {
         ]);
 
         Transform { fwd, inv }
+    }
+
+    pub fn is_finite(&self) -> bool {
+        self.fwd.is_finite() && self.inv.is_finite()
     }
 }
 
@@ -647,12 +661,12 @@ mod test {
     }
 
     #[test]
-    fn map_axes_to() {
+    fn rotate_axes_to() {
         let tx = Vec3::new(1.0, 2.0, 3.0);
         let ty = Vec3::new(4.0, 5.0, 6.0);
         let tz = Vec3::new(2.0, 4.0, 8.0);
 
-        let trans = Transform::map_axes_to(tx, ty, tz);
+        let trans = Transform::rotate_axes_to(tx, ty, tz);
 
         println!("{:?}", trans);
 
