@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     lower_process_priority();
     // rayon::ThreadPoolBuilder::new().num_threads(1).build_global().unwrap();
 
-    let scene = demos::random_tiles();
+    let scene = demos::scene_random_tiles();
 
     let client = TevClient::wrap(TcpStream::connect("127.0.0.1:14158")?);
 

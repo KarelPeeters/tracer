@@ -17,7 +17,7 @@ use tracer::demos;
 const SYNC_UPDATE_FREQ: usize = 64;
 
 fn main() -> eframe::Result<()> {
-    let scene = demos::colored_spheres();
+    let scene = demos::scene_colored_spheres();
 
     let image = Arc::new(Mutex::new(SharedImage::new(1920, 1080)));
     let stop = AtomicBool::new(false);

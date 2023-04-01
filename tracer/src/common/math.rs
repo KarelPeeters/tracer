@@ -297,6 +297,13 @@ impl Add<Vec3> for Point3 {
     }
 }
 
+impl Sub<Vec3> for Point3 {
+    type Output = Point3;
+    fn sub(self, rhs: Vec3) -> Self::Output {
+        Self::from_coords(self.coords() - rhs)
+    }
+}
+
 impl Sub<Point3> for Point3 {
     type Output = Vec3;
     fn sub(self, rhs: Point3) -> Self::Output {
@@ -308,6 +315,13 @@ impl Add<Vec2> for Point2 {
     type Output = Point2;
     fn add(self, rhs: Vec2) -> Self::Output {
         Point2 { coords: self.coords + rhs }
+    }
+}
+
+impl Sub<Vec2> for Point2 {
+    type Output = Point2;
+    fn sub(self, rhs: Vec2) -> Self::Output {
+        Point2 { coords: self.coords - rhs }
     }
 }
 
