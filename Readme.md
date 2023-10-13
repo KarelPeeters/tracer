@@ -4,10 +4,15 @@ A CPU/GPU raytracer, implemented in Rust.
 
 # Examples
 
+<details open>
+<summary>Example images</summary>
+
 ![Crisp Spheres](./docs/crisp_spheres_2k.png)
 ![Tile explosion](./docs/tile_explosion.png)
 ![Prism Exaggerated](./docs/prism_exaggerated.png)
 ![Cornell Box](./docs/cornell_box.png)
+
+</details>
 
 # Features
 
